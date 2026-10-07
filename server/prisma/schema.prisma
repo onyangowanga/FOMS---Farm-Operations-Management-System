@@ -1,0 +1,456 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  AGRONOMIST
+  WORKER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  APPROVED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum InventoryCategory {
+  SEED
+  FERTILIZER
+  CHEMICAL
+  FEED
+  VACCINE
+  SUPPLEMENT
+  ASSET
+  OTHER
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+enum DocumentCategory {
+  SOIL_REPORT
+  WATER_ANALYSIS
+  PATHOLOGY_REPORT
+  FARM_LICENSE
+  PURCHASE_RECEIPT
+  AGRONOMIST_REPORT
+  FARM_PHOTO
+  OTHER
+}
+
+model Organization {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String       @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+  memberships Membership[]
+  farms       Farm[]
+  blocks      Block[]
+  cropCycles  CropCycle[]
+  livestock   Livestock[]
+  tasks       Task[]
+  journal     JournalEntry[]
+  expenses    Expense[]
+  inventoryItems InventoryItem[]
+  stockMovements StockMovement[]
+  buyers      Buyer[]
+  sales       Sale[]
+  documents   Document[]
+  payments    Payment[]
+  audits      AuditLog[]
+}
+
+model User {
+  id             String       @id @default(uuid()) @db.Uuid
+  name           String
+  email          String       @unique
+  passwordHash   String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  memberships    Membership[]
+  refreshTokens  RefreshToken[]
+  createdFarms   Farm[]       @relation("FarmCreator")
+  createdBlocks  Block[]      @relation("BlockCreator")
+  createdCrops   CropCycle[]  @relation("CropCreator")
+  createdAnimals Livestock[]  @relation("LivestockCreator")
+  assignedTasks  Task[]       @relation("TaskAssignee")
+  createdTasks   Task[]       @relation("TaskCreator")
+  journalEntries JournalEntry[] @relation("JournalAuthor")
+  createdExpenses Expense[]   @relation("ExpenseCreator")
+  createdInventoryItems InventoryItem[] @relation("InventoryItemCreator")
+  createdStockMovements StockMovement[] @relation("StockMovementCreator")
+  createdBuyers Buyer[] @relation("BuyerCreator")
+  createdSales Sale[] @relation("SaleCreator")
+  receivedPayments Payment[] @relation("PaymentRecorder")
+  uploadedDocuments Document[] @relation("DocumentUploader")
+  auditEntries   AuditLog[]
+}
+
+model Membership {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  userId         String       @db.Uuid
+  role           Role         @default(WORKER)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique
+  userId    String   @db.Uuid
+  organizationId String @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Farm {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  name           String
+  location       String?
+  acreage        Float?
+  description    String?
+  createdBy      String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator        User?        @relation("FarmCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  blocks         Block[]
+  cropCycles     CropCycle[]
+  livestock      Livestock[]
+  tasks          Task[]
+  journal        JournalEntry[]
+  expenses       Expense[]
+  inventoryItems InventoryItem[]
+  buyers         Buyer[]
+  sales          Sale[]
+  documents      Document[]
+
+  @@index([organizationId, deletedAt])
+}
+
+model Block {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  farmId         String       @db.Uuid
+  name           String
+  acreage        Float?
+  latitude       Float?
+  longitude      Float?
+  currentUse     String?
+  soilType       String?
+  createdBy      String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm         @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  creator        User?        @relation("BlockCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  cropCycles     CropCycle[]
+  journal        JournalEntry[]
+
+  @@index([organizationId, farmId, deletedAt])
+}
+
+model CropCycle {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  farmId         String       @db.Uuid
+  blockId        String?      @db.Uuid
+  cropName       String
+  variety        String?
+  status         String       @default("PLANNED")
+  acreage        Float?
+  expectedYield  Float?
+  nurseryDate    DateTime?
+  plantingDate   DateTime?
+  expectedHarvest DateTime?
+  notes          String?
+  createdBy      String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm         @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  block          Block?       @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  creator        User?        @relation("CropCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, farmId, deletedAt])
+}
+
+model Livestock {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  farmId         String       @db.Uuid
+  species        String
+  identifier     String?
+  breed          String?
+  quantity       Int          @default(1)
+  birthDate      DateTime?
+  weightKg       Float?
+  healthStatus   String       @default("HEALTHY")
+  lastVaccinated DateTime?
+  notes          String?
+  createdBy      String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm         @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  creator        User?        @relation("LivestockCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, farmId, species, deletedAt])
+}
+
+model Task {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  farmId         String?      @db.Uuid
+  title          String
+  description    String?
+  category       String?
+  status         TaskStatus   @default(PENDING)
+  priority       Priority     @default(MEDIUM)
+  dueDate        DateTime?
+  assignedTo     String?      @db.Uuid
+  createdBy      String?      @db.Uuid
+  evidenceUrl    String?
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  assignee       User?        @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  creator        User?        @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, dueDate, deletedAt])
+}
+
+model JournalEntry {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  farmId         String?      @db.Uuid
+  blockId        String?      @db.Uuid
+  title          String
+  category       String       @default("OBSERVATION")
+  body           String
+  weather        String?
+  incident       String?
+  cost           Float        @default(0)
+  photoUrl       String?
+  observedAt     DateTime     @default(now())
+  authorId       String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  block          Block?       @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  author         User?        @relation("JournalAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, observedAt, deletedAt])
+}
+
+model Expense {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  farmId         String?      @db.Uuid
+  description    String
+  category       String
+  supplier       String?
+  amount         Float
+  currency       String       @default("KES")
+  paymentMethod  String?
+  expenseDate    DateTime     @default(now())
+  notes          String?
+  approvedAt     DateTime?
+  createdBy      String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  creator        User?        @relation("ExpenseCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, expenseDate, deletedAt])
+}
+
+model InventoryItem {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  farmId         String?           @db.Uuid
+  name           String
+  sku            String?
+  category       InventoryCategory
+  unit           String
+  quantity       Float             @default(0)
+  reorderLevel   Float             @default(0)
+  notes          String?
+  createdBy      String?           @db.Uuid
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm?             @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  creator        User?             @relation("InventoryItemCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  movements      StockMovement[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId, category, deletedAt])
+  @@index([organizationId, quantity, reorderLevel])
+}
+
+model StockMovement {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  itemId         String            @db.Uuid
+  type           StockMovementType
+  quantity       Float
+  unitCost       Decimal?          @db.Decimal(12, 2)
+  reference      String?
+  notes          String?
+  createdBy      String?           @db.Uuid
+  createdAt      DateTime          @default(now())
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item           InventoryItem     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  creator        User?             @relation("StockMovementCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, itemId, createdAt])
+}
+
+model Buyer {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  farmId         String?      @db.Uuid
+  name           String
+  email          String?
+  phone          String?
+  address        String?
+  createdBy      String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  creator        User?        @relation("BuyerCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  sales          Sale[]
+
+  @@index([organizationId, name, deletedAt])
+}
+
+model Sale {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  farmId         String?      @db.Uuid
+  buyerId        String?      @db.Uuid
+  invoiceNumber  String
+  product        String
+  quantity       Float
+  unit           String
+  unitPrice      Decimal      @db.Decimal(12, 2)
+  totalAmount    Decimal      @db.Decimal(12, 2)
+  currency       String       @default("KES")
+  soldAt         DateTime     @default(now())
+  dueDate        DateTime?
+  notes          String?
+  createdBy      String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  buyer          Buyer?       @relation(fields: [buyerId], references: [id], onDelete: SetNull)
+  creator        User?        @relation("SaleCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  payments       Payment[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId, soldAt, deletedAt])
+  @@index([organizationId, buyerId])
+}
+
+model Payment {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  saleId         String       @db.Uuid
+  amount         Decimal      @db.Decimal(12, 2)
+  method         String
+  reference      String?
+  receivedAt     DateTime     @default(now())
+  recordedBy     String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sale           Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  recorder       User?        @relation("PaymentRecorder", fields: [recordedBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, saleId, receivedAt])
+}
+
+model Document {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  farmId         String?          @db.Uuid
+  category       DocumentCategory
+  originalName   String
+  storageName    String           @unique
+  mimeType       String
+  sizeBytes      Int
+  description    String?
+  uploadedBy     String?          @db.Uuid
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm?            @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  uploader       User?            @relation("DocumentUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, category, deletedAt])
+  @@index([organizationId, createdAt])
+}
+
+model AuditLog {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  userId         String?      @db.Uuid
+  action         String
+  entity         String
+  entityId       String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+}
