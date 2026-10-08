@@ -50,7 +50,7 @@ Set `COOKIE_SECURE=true` when the application is served over HTTPS. The current 
 
 ### VPS deployment
 
-The deployment script is intended to run on the VPS from a clone of this repository. It fast-forward pulls `main`, creates a mode-600 `.env` containing fresh database/JWT secrets on first run, applies migrations, and updates only the Compose project named `foms`. It does not stop or remove other Compose projects or delete volumes.
+The deployment script is intended to run on the VPS from a clone of this repository. It fast-forward pulls `main`, creates a mode-600 `.env` containing fresh database/JWT secrets on first run, applies migrations, and updates only the Compose project named `foms-vps`. It does not stop or remove other Compose projects or delete volumes.
 
 ```sh
 git clone https://github.com/onyangowanga/FOMS---Farm-Operations-Management-System.git /opt/foms

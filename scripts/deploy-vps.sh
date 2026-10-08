@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 APP_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$APP_DIR/.env"
-PROJECT_NAME="${COMPOSE_PROJECT_NAME:-foms}"
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-foms-vps}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 
 die() {
