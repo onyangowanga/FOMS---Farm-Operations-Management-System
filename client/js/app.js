@@ -113,27 +113,27 @@ function shell() {
   app.innerHTML = `
     <div class="min-h-screen lg:flex">
       <div id="mobile-backdrop" class="${mobileOpen ? "fixed inset-0 z-30 bg-slate-950/30 lg:hidden" : "hidden"}"></div>
-      <aside class="${mobileOpen ? "fixed inset-y-0 left-0 z-40 flex w-72 flex-col" : "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col"} border-r border-slate-100 bg-white px-4 py-5">
+      <aside class="${mobileOpen ? "fixed inset-y-0 left-0 z-40 flex w-72 flex-col" : "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col"} border-r border-forest-700 bg-forest-900 px-4 py-5 text-white">
         <div class="flex items-center gap-3 px-2">
           <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-forest-600 text-lg font-bold text-white">F</div>
-          <div><div class="font-bold tracking-tight text-slate-900">FOMS</div><div class="text-[11px] text-slate-400">Farm Operations</div></div>
-          <button id="close-mobile" class="ml-auto rounded-lg p-2 text-slate-500 lg:hidden" aria-label="Close menu">✕</button>
+          <div><div class="font-bold tracking-tight text-white">FOMS</div><div class="text-[11px] text-emerald-100">Farm Operations</div></div>
+          <button id="close-mobile" class="ml-auto rounded-lg p-2 text-emerald-100 hover:bg-forest-700 hover:text-white lg:hidden" aria-label="Close menu">✕</button>
         </div>
-        <div class="mx-1 mt-7 rounded-xl bg-cream p-3">
-          <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">WORKSPACE</p>
-          <p class="mt-1 truncate text-sm font-semibold text-slate-700">${escapeHtml(currentUser.organization.name)}</p>
-          <p class="mt-1 text-xs capitalize text-slate-500">${escapeHtml(currentUser.role.toLowerCase())}</p>
+        <div class="mx-1 mt-7 rounded-xl bg-forest-700 p-3">
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-emerald-100">WORKSPACE</p>
+          <p class="mt-1 truncate text-sm font-semibold text-white">${escapeHtml(currentUser.organization.name)}</p>
+          <p class="mt-1 text-xs capitalize text-emerald-100">${escapeHtml(currentUser.role.toLowerCase())}</p>
         </div>
         <nav class="scrollbar-none mt-7 flex-1 space-y-6 overflow-y-auto">
-          ${visibleNavGroups.filter((group) => group.items.length).map((group) => `<div><p class="mb-2 px-3 text-[10px] font-bold tracking-[.12em] text-slate-400">${group.title}</p><div class="space-y-1">${group.items.map(([page, symbol, title]) => `<button data-page="${page}" class="nav-link w-full ${currentPage === page ? "active" : ""}">${icon(symbol)}<span>${title}</span></button>`).join("")}</div></div>`).join("")}
+          ${visibleNavGroups.filter((group) => group.items.length).map((group) => `<div><p class="mb-2 px-3 text-[10px] font-bold tracking-[.12em] text-emerald-200">${group.title}</p><div class="space-y-1">${group.items.map(([page, symbol, title]) => `<button data-page="${page}" ${currentPage === page ? 'aria-current="page"' : ""} class="nav-link w-full ${currentPage === page ? "active" : ""}">${icon(symbol)}<span>${title}</span></button>`).join("")}</div></div>`).join("")}
         </nav>
-        <div class="mt-4 border-t border-slate-100 pt-4">
+        <div class="mt-4 border-t border-forest-700 pt-4">
           <div class="flex items-center gap-3 rounded-xl p-2">
             <div class="flex h-9 w-9 items-center justify-center rounded-full bg-forest-50 text-xs font-bold text-forest-700">${escapeHtml(initials)}</div>
-            <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${escapeHtml(currentUser.user.name)}</p><p class="truncate text-xs text-slate-400">${escapeHtml(currentUser.user.email)}</p></div>
-            <button id="logout" class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Sign out">↪</button>
+            <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${escapeHtml(currentUser.user.name)}</p><p class="truncate text-xs text-emerald-100">${escapeHtml(currentUser.user.email)}</p></div>
+            <button id="logout" class="rounded-lg p-2 text-emerald-100 hover:bg-forest-700 hover:text-white" aria-label="Sign out">↪</button>
           </div>
-          <div id="connection-status" class="mt-2 px-2 text-xs text-forest-700"></div>
+          <div id="connection-status" class="mt-2 px-2 text-xs text-emerald-200"></div>
         </div>
       </aside>
       <main class="min-h-screen lg:ml-64">
@@ -146,9 +146,9 @@ function shell() {
       <div id="modal-root"></div>
     </div>`;
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.page)));
-  document.querySelector("#open-mobile").addEventListener("click", () => { mobileOpen = true; shell(); });
-  document.querySelector("#close-mobile")?.addEventListener("click", () => { mobileOpen = false; shell(); });
-  document.querySelector("#mobile-backdrop")?.addEventListener("click", () => { mobileOpen = false; shell(); });
+  document.querySelector("#open-mobile").addEventListener("click", () => { mobileOpen = true; renderApp(); });
+  document.querySelector("#close-mobile")?.addEventListener("click", () => { mobileOpen = false; renderApp(); });
+  document.querySelector("#mobile-backdrop")?.addEventListener("click", () => { mobileOpen = false; renderApp(); });
   document.querySelector("#logout").addEventListener("click", async () => {
     try {
       await api.post("/auth/logout", {});
@@ -677,7 +677,7 @@ function updateConnectivity() {
   indicator.textContent = navigator.onLine ? "" : "Offline · changes saved here";
   indicator.classList.toggle("hidden", navigator.onLine);
   document.querySelector("#connection-status").textContent = navigator.onLine ? "● Connected" : "● Offline";
-  document.querySelector("#connection-status").className = `mt-2 px-2 text-xs ${navigator.onLine ? "text-forest-700" : "text-amber-600"}`;
+  document.querySelector("#connection-status").className = `mt-2 px-2 text-xs ${navigator.onLine ? "text-emerald-200" : "text-amber-200"}`;
 }
 
 let connectivityInitialized = false;

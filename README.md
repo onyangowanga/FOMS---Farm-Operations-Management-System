@@ -2,6 +2,8 @@
 
 Farm Operations Management System — a mobile-first farm operations workspace.
 
+The interface uses a dark forest-green theme (`#173b27`) for desktop/mobile navigation and PWA browser chrome, with high-contrast navigation labels and a light main workspace.
+
 ## Included in this foundation release
 
 - Organization workspace registration and sign-in with short-lived access JWTs, rotating refresh tokens, bcrypt password hashing, and HttpOnly cookies.
