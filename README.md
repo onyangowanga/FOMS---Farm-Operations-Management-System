@@ -64,7 +64,7 @@ The script defaults to binding FOMS to `127.0.0.1:3003`, enables secure cookies,
 
 FOMS is served at `https://farmoms.co.ke`, with HTTP redirected to HTTPS. Its isolated Nginx configuration is in [deploy/nginx/farmoms.co.ke.conf](deploy/nginx/farmoms.co.ke.conf), installed on the VPS as `/etc/nginx/sites-available/farmoms.co.ke.conf` and enabled through a matching symlink in `sites-enabled`.
 
-The domain's A record points to `185.167.97.200`. The Let's Encrypt certificate uses the webroot `/var/www/foms-acme`; keep the HTTP ACME challenge route accessible for renewal. Certbot schedules automatic renewal and reloads Nginx after renewal. The `www` hostname is not configured because it has no DNS record yet.
+Both `farmoms.co.ke` and `www.farmoms.co.ke` resolve to `185.167.97.200` and are covered by the Let's Encrypt certificate. HTTP requests and HTTPS requests to `www` redirect to `https://farmoms.co.ke`, preserving the path and query string. The certificate uses the webroot `/var/www/foms-acme`; keep the HTTP ACME challenge route accessible for both hostnames for renewal. Certbot schedules automatic renewal and reloads Nginx after renewal.
 
 ## API resources
 
