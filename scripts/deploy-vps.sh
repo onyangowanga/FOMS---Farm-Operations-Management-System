@@ -29,16 +29,19 @@ if [[ ! -f "$ENV_FILE" ]]; then
     printf 'JWT_ACCESS_SECRET=%s\n' "$(openssl rand -hex 48)"
     printf 'COOKIE_SECURE=true\n'
     printf 'FOMS_BIND_ADDRESS=127.0.0.1\n'
-    printf 'FOMS_PORT=3001\n'
+    printf 'FOMS_PORT=3003\n'
   } > "$ENV_FILE"
-  printf 'Created %s with generated secrets and loopback-only port 3001.\n' "$ENV_FILE"
-  printf 'Configure HTTPS reverse-proxy routing to http://127.0.0.1:3001 before user sign-in.\n'
+  printf 'Created %s with generated secrets and loopback-only port 3003.\n' "$ENV_FILE"
+  printf 'Configure HTTPS reverse-proxy routing to http://127.0.0.1:3003 before user sign-in.\n'
 fi
 
 grep -Eq '^POSTGRES_PASSWORD=.{32,}$' "$ENV_FILE" || die ".env must contain a POSTGRES_PASSWORD of at least 32 characters."
 grep -Eq '^JWT_ACCESS_SECRET=.{32,}$' "$ENV_FILE" || die ".env must contain a JWT_ACCESS_SECRET of at least 32 characters."
 grep -qx 'COOKIE_SECURE=true' "$ENV_FILE" || die "Set COOKIE_SECURE=true in .env; FOMS requires HTTPS termination in production."
 grep -qx 'FOMS_BIND_ADDRESS=127.0.0.1' "$ENV_FILE" || die "FOMS_BIND_ADDRESS must remain 127.0.0.1 to avoid exposing the app without the reverse proxy."
+FOMS_PORT="$(sed -n 's/^FOMS_PORT=//p' "$ENV_FILE")"
+[[ "$FOMS_PORT" =~ ^[0-9]{1,5}$ ]] || die ".env must contain a numeric FOMS_PORT."
+(( 10#$FOMS_PORT >= 1 && 10#$FOMS_PORT <= 65535 )) || die "FOMS_PORT must be between 1 and 65535."
 
 COMPOSE=(docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" --file "$APP_DIR/compose.yaml")
 
@@ -56,4 +59,4 @@ printf 'Starting/updating the FOMS app...\n'
 
 printf '\nFOMS deployment is healthy.\n'
 "${COMPOSE[@]}" ps
-printf '\nReverse-proxy upstream: http://127.0.0.1:3001\n'
+printf '\nReverse-proxy upstream: http://127.0.0.1:%s\n' "$FOMS_PORT"

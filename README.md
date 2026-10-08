@@ -58,7 +58,7 @@ cd /opt/foms
 ./scripts/deploy-vps.sh
 ```
 
-The script binds FOMS to `127.0.0.1:3001`, enables secure cookies, and requires HTTPS termination by a reverse proxy. Configure a hostname and HTTPS proxy on the VPS to forward to `http://127.0.0.1:3001` before using sign-in. Do not expose port 3001 directly to the public internet or disable `COOKIE_SECURE`. For later updates, run `./scripts/deploy-vps.sh` again from the `main` checkout. The persistent database and upload volumes are not removed by the script.
+The script defaults to binding FOMS to `127.0.0.1:3003`, enables secure cookies, and requires HTTPS termination by a reverse proxy. Configure a hostname and HTTPS proxy on the VPS to forward to `http://127.0.0.1:3003` before using sign-in. Do not expose port 3003 directly to the public internet or disable `COOKIE_SECURE`. Existing deployments retain their `.env` settings: to change the port, update `FOMS_PORT` there and the FOMS reverse-proxy upstream together. For later updates, run `./scripts/deploy-vps.sh` again from the `main` checkout. The persistent database and upload volumes are not removed by the script.
 
 ## API resources
 
