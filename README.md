@@ -60,6 +60,12 @@ cd /opt/foms
 
 The script defaults to binding FOMS to `127.0.0.1:3003`, enables secure cookies, and requires HTTPS termination by a reverse proxy. Configure a hostname and HTTPS proxy on the VPS to forward to `http://127.0.0.1:3003` before using sign-in. Do not expose port 3003 directly to the public internet or disable `COOKIE_SECURE`. Existing deployments retain their `.env` settings: to change the port, update `FOMS_PORT` there and the FOMS reverse-proxy upstream together. For later updates, run `./scripts/deploy-vps.sh` again from the `main` checkout. The persistent database and upload volumes are not removed by the script.
 
+### Live domain and HTTPS
+
+FOMS is served at `https://farmoms.co.ke`, with HTTP redirected to HTTPS. Its isolated Nginx configuration is in [deploy/nginx/farmoms.co.ke.conf](deploy/nginx/farmoms.co.ke.conf), installed on the VPS as `/etc/nginx/sites-available/farmoms.co.ke.conf` and enabled through a matching symlink in `sites-enabled`.
+
+The domain's A record points to `185.167.97.200`. The Let's Encrypt certificate uses the webroot `/var/www/foms-acme`; keep the HTTP ACME challenge route accessible for renewal. Certbot schedules automatic renewal and reloads Nginx after renewal. The `www` hostname is not configured because it has no DNS record yet.
+
 ## API resources
 
 All application endpoints are under `/api/v1`. Authentication endpoints are `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, and `/auth/me`. Authenticated resource routes include `/dashboard`, `/farms`, `/blocks`, `/crops`, `/livestock`, `/tasks`, `/journal`, `/expenses`, `/team`, `/inventory`, `/sales`, and `/documents`. Inventory movements use `/inventory/items/:id/movements`; sale payments use `/sales/:id/payments`; document uploads and downloads use `/documents`.
