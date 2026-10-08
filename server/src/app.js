@@ -12,6 +12,7 @@ import inventoryRoutes from "./modules/inventory/inventory.routes.js";
 import salesRoutes from "./modules/sales/sales.routes.js";
 import documentsRoutes from "./modules/documents/documents.routes.js";
 import { createResourceRouter } from "./modules/resources/resource.routes.js";
+import { createStructureRouter, organizationRouter } from "./modules/resources/structure.routes.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { errorHandler } from "./shared/errors.js";
 import { prisma } from "./config/database.js";
@@ -40,11 +41,14 @@ app.use("/api/v1/team", teamRoutes);
 app.use("/api/v1/inventory", inventoryRoutes);
 app.use("/api/v1/sales", salesRoutes);
 app.use("/api/v1/documents", documentsRoutes);
-for (const [path, name] of Object.entries({ farms: "farms", blocks: "blocks", crops: "crops", livestock: "livestock", tasks: "tasks", journal: "journal", expenses: "expenses" })) {
+app.use("/api/v1/organization", organizationRouter);
+app.use("/api/v1/farms", createStructureRouter("farms"));
+app.use("/api/v1/blocks", createStructureRouter("blocks"));
+for (const [path, name] of Object.entries({ crops: "crops", livestock: "livestock", tasks: "tasks", journal: "journal", expenses: "expenses" })) {
   app.use(`/api/v1/${path}`, createResourceRouter(name));
 }
 app.use("/api/v1", (_req, res) => res.status(404).json({ success: false, message: "API endpoint was not found" }));
-app.use(express.static(clientPath, { index: false, maxAge: process.env.NODE_ENV === "production" ? "1d" : 0 }));
+app.use(express.static(clientPath, { index: false, maxAge: 0 }));
 app.get("*splat", (_req, res) => res.sendFile(path.join(clientPath, "index.html")));
 
 app.use((error, _req, res, next) => {

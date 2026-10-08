@@ -1,10 +1,11 @@
 {
   "name": "foms",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Farm Operations Management System",
   "scripts": {
+    "test": "node --test tests/*.test.js",
     "dev": "node --watch server/src/index.js",
     "start": "node server/src/index.js",
     "build:css": "tailwindcss -i ./client/styles/input.css -o ./client/styles.css --minify",

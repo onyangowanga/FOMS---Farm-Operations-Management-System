@@ -55,6 +55,8 @@ The long-term goal is to evolve FOMS into a SaaS product for commercial farms ac
 - GPS coordinates
 - Farm hierarchy
 
+Implemented in the Version 0.2 update: organization hierarchy and owner-only workspace renaming, farm/block editing and filtering, GPS entry and device location capture, farm-specific crop/journal block selection, and linked-record archive guards. Existing records are preserved through an additive farm-coordinate migration.
+
 ## Version 0.3 - Crop Management
 
 - Crop master data

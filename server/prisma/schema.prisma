@@ -138,6 +138,8 @@ model Farm {
   organizationId String       @db.Uuid
   name           String
   location       String?
+  latitude       Float?
+  longitude      Float?
   acreage        Float?
   description    String?
   createdBy      String?      @db.Uuid

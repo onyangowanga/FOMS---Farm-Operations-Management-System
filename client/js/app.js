@@ -1,15 +1,15 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.2.0";
 import { offlineStore } from "./offline.js";
 
 const app = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast-root");
 const navGroups = [
-  { title: "OVERVIEW", items: [["dashboard", "◫", "Dashboard"]] },
+  { title: "OVERVIEW", items: [["dashboard", "◫", "Dashboard"], ["structure", "▦", "Farm structure"]] },
   { title: "FARM OPERATIONS", items: [["farms", "⌂", "Farms"], ["blocks", "▦", "Blocks"], ["crops", "❋", "Crops"], ["livestock", "♧", "Livestock"], ["tasks", "☑", "Tasks"], ["journal", "▤", "Farm journal"]] },
   { title: "MANAGEMENT", items: [["inventory", "▤", "Inventory"], ["sales", "$", "Sales & invoices"], ["expenses", "↗", "Expenses"], ["documents", "▧", "Documents"], ["team", "♙", "Team"]] }
 ];
 const config = {
-  farms: { title: "Farms", singular: "farm", endpoint: "farms", roles: ["OWNER", "MANAGER"], fields: [["name", "Farm name", "text", true], ["location", "Location", "text"], ["acreage", "Total acreage", "number"], ["description", "Notes", "textarea"]], columns: [["name", "Farm"], ["location", "Location"], ["acreage", "Acres"]] },
+  farms: { title: "Farms", singular: "farm", endpoint: "farms", roles: ["OWNER", "MANAGER"], fields: [["name", "Farm name", "text", true], ["location", "Location", "text"], ["acreage", "Total acreage", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["description", "Notes", "textarea"]], columns: [["name", "Farm"], ["location", "Location"], ["acreage", "Acres"], ["latitude", "Latitude"], ["longitude", "Longitude"]] },
   blocks: { title: "Farm blocks", singular: "block", endpoint: "blocks", roles: ["OWNER", "MANAGER"], fields: [["farmId", "Farm", "farm", true], ["name", "Block name", "text", true], ["acreage", "Area (acres)", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["currentUse", "Current use", "text"], ["soilType", "Soil type", "text"]], columns: [["name", "Block"], ["farmId", "Farm"], ["acreage", "Acres"], ["currentUse", "Current use"], ["soilType", "Soil type"]] },
   crops: { title: "Crop cycles", singular: "crop cycle", endpoint: "crops", roles: ["OWNER", "MANAGER", "AGRONOMIST"], fields: [["farmId", "Farm", "farm", true], ["cropName", "Crop name", "text", true], ["variety", "Variety", "text"], ["status", "Stage", "select", false, ["PLANNED", "GROWING", "HARVESTED", "CANCELLED"]], ["acreage", "Area (acres)", "number"], ["plantingDate", "Planting date", "date"], ["expectedHarvest", "Expected harvest", "date"], ["expectedYield", "Expected yield", "number"], ["notes", "Notes", "textarea"]], columns: [["cropName", "Crop"], ["variety", "Variety"], ["status", "Stage"], ["expectedHarvest", "Harvest date"]] },
   livestock: { title: "Livestock", singular: "livestock record", endpoint: "livestock", roles: ["OWNER", "MANAGER"], fields: [["farmId", "Farm", "farm", true], ["species", "Species", "select", true, ["GOAT", "SHEEP", "POULTRY"]], ["identifier", "ID / batch", "text"], ["breed", "Breed", "text"], ["quantity", "Quantity", "number"], ["healthStatus", "Health", "select", false, ["HEALTHY", "UNDER_TREATMENT", "SICK", "DECEASED"]], ["weightKg", "Weight (kg)", "number"], ["lastVaccinated", "Last vaccinated", "date"], ["notes", "Notes", "textarea"]], columns: [["species", "Species"], ["identifier", "ID / batch"], ["breed", "Breed"], ["quantity", "Quantity"], ["healthStatus", "Health"]] },
@@ -23,6 +23,20 @@ let currentPage = "dashboard";
 let mobileOpen = false;
 let farms = [];
 let teamMembers = [];
+let blocks = [];
+let selectedFarmId = "";
+
+async function loadAll(path) {
+  const separator = path.includes("?") ? "&" : "?";
+  const records = [];
+  let page = 1;
+  let response;
+  do {
+    response = await api.get(`${path}${separator}limit=100&page=${page++}`);
+    records.push(...response.data);
+  } while (records.length < response.meta.total);
+  return records;
+}
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -197,6 +211,7 @@ async function renderDashboard() {
 }
 
 function formatCell(key, value) {
+  if (key === "blockId" && value) value = blocks.find((block) => block.id === value)?.name || "Archived block";
   if (key === "approvedAt") return `<span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${value ? "bg-forest-50 text-forest-700" : "bg-amber-50 text-amber-700"}">${value ? "approved" : "awaiting approval"}</span>`;
   if (value === null || value === undefined || value === "") return `<span class="text-slate-300">—</span>`;
   if (key.toLowerCase().includes("date") || key === "expectedHarvest" || key === "plantingDate" || key === "observedAt") return escapeHtml(new Date(value).toLocaleDateString());
@@ -210,11 +225,21 @@ function formatCell(key, value) {
 }
 
 async function renderResource(page) {
-  const resource = config[page];
+  if (["farms", "blocks"].includes(page)) return renderStructureRecords(page);
+  const resource = {
+    ...config[page],
+    columns: ["crops", "journal"].includes(page)
+      ? [...config[page].columns, ["farmId", "Farm"], ["blockId", "Block / plot"]]
+      : config[page].columns
+  };
   const content = document.querySelector("#content");
   content.innerHTML = `<div class="flex min-h-64 items-center justify-center text-sm text-slate-400">Loading ${escapeHtml(resource.title.toLowerCase())}…</div>`;
-  const [{ data }, farmResponse] = await Promise.all([api.get(`/${resource.endpoint}`), api.get("/farms").catch(() => ({ data: [] }))]);
-  farms = farmResponse.data;
+  const [{ data }, farmRecords, blockRecords] = await Promise.all([
+    api.get(`/${resource.endpoint}`), loadAll("/farms"),
+    ["crops", "journal"].includes(page) ? loadAll("/blocks") : Promise.resolve([])
+  ]);
+  farms = farmRecords;
+  blocks = blockRecords;
   const empty = data.length === 0;
   const canManage = resource.roles.includes(currentUser.role);
   content.innerHTML = `
@@ -251,6 +276,74 @@ async function renderResource(page) {
       const response = await api.post(`/expenses/${button.dataset.approve}/approve`, {});
       showToast(response.message);
       await renderResource(page);
+    } catch (error) { showToast(error.message, "error"); }
+  }));
+}
+
+function gpsMarkup(record) {
+  if (record.latitude == null || record.longitude == null) return '<span class="text-slate-400">Not set</span>';
+  return `${escapeHtml(record.latitude)}, ${escapeHtml(record.longitude)}`;
+}
+
+async function renderStructure() {
+  const { data } = await api.get("/organization");
+  const canManage = ["OWNER", "MANAGER"].includes(currentUser.role);
+  const content = document.querySelector("#content");
+  content.innerHTML = `
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium text-forest-600">ORGANIZATION / FARMS / BLOCKS</p><h1 class="mt-1 text-2xl font-semibold">${escapeHtml(data.name)}</h1><p class="mt-2 text-sm text-slate-500">${data.farms.length} farms · ${data.farms.reduce((count, farm) => count + farm.blocks.length, 0)} blocks / plots</p></div>${canManage ? '<button id="structure-add-farm" class="btn-primary">Add farm</button>' : ""}</div>
+    ${currentUser.role === "OWNER" ? `<form id="organization-form" class="card mb-5 flex flex-wrap items-end gap-3"><label class="flex-1"><span class="label">Organization name</span><input class="field" name="name" value="${escapeHtml(data.name)}" required minlength="2" maxlength="120"></label><button class="btn-secondary" type="submit">Save workspace name</button></form>` : ""}
+    <div class="space-y-5">${data.farms.length ? data.farms.map((farm) => `
+      <section class="card"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-semibold">${escapeHtml(farm.name)}</h2><p class="mt-1 text-sm text-slate-500">${escapeHtml(farm.location || "Location not set")} · ${farm.acreage == null ? "Area not set" : `${escapeHtml(farm.acreage)} acres`}</p><p class="mt-2 text-xs text-slate-500">GPS: ${gpsMarkup(farm)}</p></div><button data-view-blocks="${farm.id}" class="btn-secondary">View blocks / plots</button></div>
+      <div class="mt-4 space-y-2">${farm.blocks.length ? farm.blocks.map((block) => `<div class="rounded-xl border border-slate-100 p-3"><p class="text-sm font-semibold">${escapeHtml(block.name)}</p><p class="mt-1 text-xs text-slate-500">${block.acreage == null ? "Area not set" : `${escapeHtml(block.acreage)} acres`} · ${escapeHtml(block.currentUse || "Use not set")} · ${escapeHtml(block.soilType || "Soil not set")}</p><p class="mt-1 text-xs text-slate-500">GPS: ${gpsMarkup(block)}</p></div>`).join("") : '<p class="text-sm text-slate-400">No blocks / plots yet.</p>'}</div>
+      ${canManage ? `<button data-add-block="${farm.id}" class="btn-primary mt-4">Add block / plot</button>` : ""}</section>`).join("") : '<section class="card text-sm text-slate-500">Add your first farm to begin building your farm hierarchy.</section>'}</div>`;
+  content.querySelector("#structure-add-farm")?.addEventListener("click", () => openRecordModal("farms"));
+  content.querySelectorAll("[data-view-blocks]").forEach((button) => button.addEventListener("click", () => {
+    selectedFarmId = button.dataset.viewBlocks;
+    navigate("blocks");
+  }));
+  content.querySelectorAll("[data-add-block]").forEach((button) => button.addEventListener("click", () => openRecordModal("blocks", { farmId: button.dataset.addBlock })));
+  content.querySelector("#organization-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const response = await api.patch("/organization", Object.fromEntries(new FormData(event.currentTarget)));
+      if (response.queued) {
+        showToast(response.message);
+        return;
+      }
+      currentUser.organization.name = response.data.name;
+      await renderApp();
+      showToast(response.message);
+    } catch (error) { showToast(error.message, "error"); }
+  });
+}
+
+async function renderStructureRecords(page) {
+  const resource = config[page];
+  farms = await loadAll("/farms");
+  if (!farms.some((farm) => farm.id === selectedFarmId)) selectedFarmId = "";
+  const data = page === "farms" ? farms : await loadAll(`/blocks${selectedFarmId ? `?farmId=${selectedFarmId}` : ""}`);
+  const canManage = resource.roles.includes(currentUser.role);
+  const content = document.querySelector("#content");
+  content.innerHTML = `
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium text-forest-600">${escapeHtml(currentUser.organization.name)}</p><h1 class="mt-1 text-2xl font-semibold">${page === "blocks" ? "Blocks / plots" : "Farms"}</h1><p class="mt-2 text-sm text-slate-500">${data.length} records · Manage your farm hierarchy and locations.</p></div>${canManage ? `<button id="new-structure-record" class="btn-primary">Add ${resource.singular}</button>` : ""}</div>
+    ${page === "blocks" ? `<label class="mb-5 block max-w-sm"><span class="label">Filter by farm</span><select id="structure-farm-filter" class="field"><option value="">All farms</option>${farms.map((farm) => `<option value="${farm.id}" ${selectedFarmId === farm.id ? "selected" : ""}>${escapeHtml(farm.name)}</option>`).join("")}</select></label>` : ""}
+    <section class="card overflow-x-auto"><table class="w-full min-w-[700px] text-left"><thead><tr>${["Name", ...(page === "blocks" ? ["Farm"] : ["Location"]), "Acres", "GPS coordinates", "Actions"].map((title) => `<th class="px-3 py-3 text-xs">${title}</th>`).join("")}</tr></thead><tbody>${data.map((record) => `<tr><td class="px-3 py-3 text-sm font-semibold">${escapeHtml(record.name)}${page === "blocks" ? `<p class="mt-1 text-xs font-normal text-slate-500">${escapeHtml(record.currentUse || "")} ${escapeHtml(record.soilType || "")}</p>` : ""}</td><td class="px-3 py-3 text-sm">${escapeHtml(page === "blocks" ? record.farm.name : record.location || "")}</td><td class="px-3 py-3 text-sm">${record.acreage == null ? "Not set" : escapeHtml(record.acreage)}</td><td class="px-3 py-3 text-sm">${gpsMarkup(record)}</td><td class="px-3 py-3"><div class="flex gap-2">${page === "farms" ? `<button data-view-blocks="${record.id}" class="btn-secondary">Blocks</button>` : ""}${canManage ? `<button data-edit-structure="${record.id}" class="btn-secondary">Edit</button><button data-archive-structure="${record.id}" class="btn-secondary">Archive</button>` : ""}</div></td></tr>`).join("") || '<tr><td colspan="5" class="p-6 text-center text-sm text-slate-400">No records yet.</td></tr>'}</tbody></table></section>`;
+  content.querySelector("#structure-farm-filter")?.addEventListener("change", async (event) => {
+    selectedFarmId = event.target.value;
+    await renderPage();
+  });
+  content.querySelector("#new-structure-record")?.addEventListener("click", () => openRecordModal(page, page === "blocks" ? { farmId: selectedFarmId } : {}));
+  content.querySelectorAll("[data-view-blocks]").forEach((button) => button.addEventListener("click", () => {
+    selectedFarmId = button.dataset.viewBlocks;
+    navigate("blocks");
+  }));
+  content.querySelectorAll("[data-edit-structure]").forEach((button) => button.addEventListener("click", () => openRecordModal(page, data.find((record) => record.id === button.dataset.editStructure))));
+  content.querySelectorAll("[data-archive-structure]").forEach((button) => button.addEventListener("click", async () => {
+    if (!window.confirm(`Archive this ${resource.singular}? Active child records must be archived or unlinked first.`)) return;
+    try {
+      const response = await api.delete(`/${page}/${button.dataset.archiveStructure}`);
+      showToast(response.message);
+      await renderPage();
     } catch (error) { showToast(error.message, "error"); }
   }));
 }
@@ -456,35 +549,72 @@ function fieldMarkup([key, label, type, required = false, options = []], values 
   if (type === "select") return `<label class="block"><span class="label">${label}</span><select ${common}><option value="">Select ${label.toLowerCase()}</option>${options.map((item) => `<option value="${item}" ${value === item ? "selected" : ""}>${escapeHtml(item.toLowerCase().replaceAll("_", " "))}</option>`).join("")}</select></label>`;
   if (type === "farm") return `<label class="block"><span class="label">${label}</span><select ${common} ${required ? "required" : ""}><option value="">Select a farm</option>${farms.map((farm) => `<option value="${farm.id}" ${value === farm.id ? "selected" : ""}>${escapeHtml(farm.name)}</option>`).join("")}</select></label>`;
   if (type === "team") return `<label class="block"><span class="label">${label}</span><select ${common}><option value="">Unassigned</option>${teamMembers.map((member) => `<option value="${member.user.id}" ${value === member.user.id ? "selected" : ""}>${escapeHtml(member.user.name)} · ${escapeHtml(member.role.toLowerCase())}</option>`).join("")}</select></label>`;
-  return `<label class="block"><span class="label">${label}</span><input ${common} type="${type}" value="${escapeHtml(value)}" ${type === "number" ? 'step="any" min="0"' : ""}></label>`;
+  if (type === "block") return `<label class="block"><span class="label">${label}</span><select ${common}><option value="">No block / plot</option>${blocks.filter((block) => block.farmId === values.farmId).map((block) => `<option value="${block.id}" ${value === block.id ? "selected" : ""}>${escapeHtml(block.name)}</option>`).join("")}</select></label>`;
+  const bounds = key === "latitude" ? 'min="-90" max="90"' : key === "longitude" ? 'min="-180" max="180"' : 'min="0"';
+  return `<label class="block"><span class="label">${label}</span><input ${common} type="${type}" value="${escapeHtml(value)}" ${type === "number" ? `step="any" ${bounds}` : ""}></label>`;
 }
 
-async function openRecordModal(page) {
+async function openRecordModal(page, values = {}) {
+  try {
   const resource = config[page];
+  const editing = Boolean(values.id);
   if (resource.fields.some(([, , type]) => type === "farm")) {
-    const response = await api.get("/farms");
-    farms = response.data;
+    farms = await loadAll("/farms");
   }
+  if (["crops", "journal"].includes(page)) blocks = await loadAll("/blocks");
   if (page === "tasks") teamMembers = (await api.get("/team")).data;
   const root = document.querySelector("#modal-root");
-  root.innerHTML = `<div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-[2px] sm:items-center sm:p-5"><div class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-7"><div class="flex items-start justify-between"><div><p class="text-xs font-semibold uppercase tracking-wider text-forest-600">NEW RECORD</p><h2 class="mt-1 text-xl font-semibold text-slate-900">Add ${resource.singular}</h2></div><button data-close class="rounded-lg p-2 text-slate-400 hover:bg-slate-100" aria-label="Close">✕</button></div><form id="record-form" class="mt-6 grid gap-4 sm:grid-cols-2">${resource.fields.map((field) => fieldMarkup(field)).join("")}<div class="mt-2 flex gap-3 sm:col-span-2"><button type="button" data-close class="btn-secondary flex-1">Cancel</button><button type="submit" class="btn-primary flex-1">Save ${resource.singular}</button></div></form></div></div>`;
+  const fields = [...resource.fields];
+  if (["crops", "journal"].includes(page)) fields.splice(fields.findIndex(([key]) => key === "farmId") + 1, 0, ["blockId", "Block / plot", "block"]);
+  root.innerHTML = `<div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-[2px] sm:items-center sm:p-5"><div class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-7"><div class="flex items-start justify-between"><div><p class="text-xs font-semibold uppercase tracking-wider text-forest-600">${editing ? "EDIT RECORD" : "NEW RECORD"}</p><h2 class="mt-1 text-xl font-semibold text-slate-900">${editing ? "Edit" : "Add"} ${resource.singular}</h2></div><button data-close class="rounded-lg p-2 text-slate-400 hover:bg-slate-100" aria-label="Close">✕</button></div><form id="record-form" class="mt-6 grid gap-4 sm:grid-cols-2">${fields.map((field) => fieldMarkup(field, values)).join("")}${["farms", "blocks"].includes(page) ? '<div class="sm:col-span-2"><button type="button" id="capture-gps" class="btn-secondary">Use current GPS location</button><p class="mt-2 text-xs text-slate-500">Provide both latitude and longitude, or leave both blank. Location access requires HTTPS or localhost.</p></div>' : ""}<div class="mt-2 flex gap-3 sm:col-span-2"><button type="button" data-close class="btn-secondary flex-1">Cancel</button><button type="submit" class="btn-primary flex-1">Save ${resource.singular}</button></div></form></div></div>`;
+  if (page === "blocks" && editing) root.querySelector("#field-farmId").disabled = true;
+  root.querySelector("#field-farmId")?.addEventListener("change", (event) => {
+    const select = root.querySelector("#field-blockId");
+    if (select) select.innerHTML = `<option value="">No block / plot</option>${blocks.filter((block) => block.farmId === event.target.value).map((block) => `<option value="${block.id}">${escapeHtml(block.name)}</option>`).join("")}`;
+  });
+  root.querySelector("#capture-gps")?.addEventListener("click", () => {
+    if (!navigator.geolocation) {
+      showToast("Your browser does not support location access.", "error");
+      return;
+    }
+    const button = root.querySelector("#capture-gps");
+    button.disabled = true;
+    navigator.geolocation.getCurrentPosition((position) => {
+      if (!root.querySelector("#field-latitude")) return;
+      root.querySelector("#field-latitude").value = position.coords.latitude;
+      root.querySelector("#field-longitude").value = position.coords.longitude;
+      button.disabled = false;
+      showToast("GPS coordinates captured. Save the record to keep them.");
+    }, (error) => {
+      button.disabled = false;
+      showToast(`Could not capture GPS location: ${error.message}`, "error");
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  });
   root.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => { root.innerHTML = ""; }));
   root.querySelector("#record-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const payload = {};
     for (const [key, value] of formData.entries()) {
-      if (value === "") continue;
-      const field = resource.fields.find(([name]) => name === key);
+      if (value === "") {
+        if (editing) payload[key] = null;
+        continue;
+      }
+      const field = fields.find(([name]) => name === key);
       payload[key] = field[2] === "number" ? Number(value) : value;
     }
+    const submit = event.currentTarget.querySelector("[type=submit]");
+    submit.disabled = true;
     try {
-      const response = await api.post(`/${resource.endpoint}`, payload);
+      const response = editing
+        ? await api.patch(`/${resource.endpoint}/${values.id}`, payload)
+        : await api.post(`/${resource.endpoint}`, payload);
       root.innerHTML = "";
       showToast(response.message);
       await renderPage();
-    } catch (error) { showToast(error.message, "error"); }
+    } catch (error) { submit.disabled = false; showToast(error.message, "error"); }
   });
+  } catch (error) { showToast(error.message, "error"); }
 }
 
 function openQuickAdd() {
@@ -503,6 +633,7 @@ async function renderPage() {
   const content = document.querySelector("#content");
   try {
     if (currentPage === "dashboard") await renderDashboard();
+    else if (currentPage === "structure") await renderStructure();
     else if (currentPage === "inventory") await renderInventory();
     else if (currentPage === "sales") await renderSales();
     else if (currentPage === "documents") await renderDocuments();

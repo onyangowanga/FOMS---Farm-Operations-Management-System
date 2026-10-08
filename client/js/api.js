@@ -36,7 +36,12 @@ async function apiRequest(path, options = {}) {
     if (refreshed.ok) return apiRequest(path, options);
   }
   const body = await response.json();
-  if (!response.ok) throw new Error(body.message || "The request could not be completed");
+  if (!response.ok) {
+    const validation = Array.isArray(body.errors)
+      ? body.errors.map((issue) => `${issue.field ? `${issue.field}: ` : ""}${issue.message}`).join("; ")
+      : "";
+    throw new Error(validation || body.message || "The request could not be completed");
+  }
   if (method === "GET" && !path.startsWith("/auth/")) await offlineStore.put(`${offlineIdentity}:${path}`, body);
   return body;
 }

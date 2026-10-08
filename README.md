@@ -12,6 +12,17 @@ Farm Operations Management System — a mobile-first farm operations workspace.
 - Private farm document uploads for PDFs and photos (PDF, JPEG, PNG, WebP; 10 MB maximum), persisted in a Docker volume.
 - PostgreSQL schema managed by Prisma, Tailwind CSS 3, Docker image build.
 
+## Version 0.2 - Farm structure
+
+- Organization hierarchy screen with farms and their blocks / plots; owners can rename the workspace.
+- Editable farms and blocks, farm-specific block filters, and complete paginated farm/block selectors.
+- Farm and block GPS coordinates, including negative coordinates and browser location capture (HTTPS or localhost required).
+- GPS values must be provided as a pair, within latitude -90 to 90 and longitude -180 to 180; editing supports clearing both.
+- Crop and journal forms select blocks belonging to the chosen farm. The API rejects cross-tenant and cross-farm references.
+- Blocks retain their original farm. Archives are blocked while active related records remain; archiving does not delete history.
+
+Run `npm test` for validation tests. To include database-backed API tests in a local container stack, set `FOMS_TEST_URL=http://app:3000` and run the tests in the Compose build-stage migration service after the app is healthy. Test workspaces are generated uniquely and removed afterward; never run these tests against production.
+
 ## Local development
 
 Requirements: Node.js 20+, npm, and PostgreSQL 14+.
@@ -68,4 +79,4 @@ Both `farmoms.co.ke` and `www.farmoms.co.ke` resolve to `185.167.97.200` and are
 
 ## API resources
 
-All application endpoints are under `/api/v1`. Authentication endpoints are `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, and `/auth/me`. Authenticated resource routes include `/dashboard`, `/farms`, `/blocks`, `/crops`, `/livestock`, `/tasks`, `/journal`, `/expenses`, `/team`, `/inventory`, `/sales`, and `/documents`. Inventory movements use `/inventory/items/:id/movements`; sale payments use `/sales/:id/payments`; document uploads and downloads use `/documents`.
+All application endpoints are under `/api/v1`. Authentication endpoints are `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, and `/auth/me`. Authenticated resource routes include `/dashboard`, `/organization`, `/farms`, `/blocks`, `/crops`, `/livestock`, `/tasks`, `/journal`, `/expenses`, `/team`, `/inventory`, `/sales`, and `/documents`. `GET /organization` returns the complete active farm/block hierarchy; owners can rename the workspace with `PATCH /organization`. Farms and blocks support create, edit and archive; `GET /blocks?farmId=<uuid>` filters by farm, and lists support `page` and `limit` (up to 100). Inventory movements use `/inventory/items/:id/movements`; sale payments use `/sales/:id/payments`; document uploads and downloads use `/documents`.
