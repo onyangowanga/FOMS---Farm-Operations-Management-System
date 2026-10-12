@@ -21,7 +21,7 @@ router.get("/", async (req, res, next) => {
       prisma.farm.findMany({ where: farmWhere, select: { id: true, name: true, acreage: true, location: true }, orderBy: { createdAt: "asc" } }),
       prisma.block.count({ where: farmWhere }),
       prisma.cropCycle.findMany({ where: farmWhere, select: { id: true, cropName: true, status: true, acreage: true, expectedHarvest: true }, orderBy: { createdAt: "desc" }, take: 5 }),
-      prisma.livestock.groupBy({ by: ["species"], where: farmWhere, _sum: { quantity: true }, _count: { id: true } }),
+      prisma.livestock.groupBy({ by: ["species"], where: { ...farmWhere, farm: { deletedAt: null }, healthStatus: { not: "DECEASED" } }, _sum: { quantity: true }, _count: { id: true } }),
       prisma.task.groupBy({ by: ["status"], where: farmWhere, _count: { id: true } }),
       canSeeFinancials
         ? prisma.expense.aggregate({ where: { ...farmWhere, expenseDate: { gte: monthStart } }, _sum: { amount: true } })

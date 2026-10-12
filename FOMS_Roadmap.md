@@ -78,6 +78,8 @@ Version 0.3.1 polishing (before Version 0.4): per-cycle yielding-day harvest sug
 - Health records
 - Mortality tracking
 
+Implemented in Version 0.4: individual or batch tracking for goats, sheep and poultry; mobile list/detail profiles; birth/hatch dates and age; append-only vaccination, health, weight and mortality history; automatic serialized living-count deductions; poultry feed-consumption and egg-production logs and totals. Preserves worker daily-report restrictions and existing records. No breeding, movements or automatic stock/sales integration.
+
 ## Version 0.5 - Task Management
 
 - Task creation

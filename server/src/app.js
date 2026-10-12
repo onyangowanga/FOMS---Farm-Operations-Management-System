@@ -14,6 +14,7 @@ import salesRoutes from "./modules/sales/sales.routes.js";
 import documentsRoutes from "./modules/documents/documents.routes.js";
 import cropRoutes from "./modules/resources/crop.routes.js";
 import journalRoutes from "./modules/resources/journal.routes.js";
+import livestockRoutes from "./modules/resources/livestock.routes.js";
 import { createResourceRouter } from "./modules/resources/resource.routes.js";
 import { createStructureRouter, organizationRouter } from "./modules/resources/structure.routes.js";
 import { authenticate } from "./middleware/authenticate.js";
@@ -56,7 +57,8 @@ app.use("/api/v1/farms", createStructureRouter("farms"));
 app.use("/api/v1/blocks", createStructureRouter("blocks"));
 app.use("/api/v1/crops", cropRoutes);
 app.use("/api/v1/journal", journalRoutes);
-for (const [path, name] of Object.entries({ livestock: "livestock", tasks: "tasks", expenses: "expenses" })) {
+app.use("/api/v1/livestock", livestockRoutes);
+for (const [path, name] of Object.entries({ tasks: "tasks", expenses: "expenses" })) {
   app.use(`/api/v1/${path}`, createResourceRouter(name));
 }
 app.use("/api/v1", (_req, res) => res.status(404).json({ success: false, message: "API endpoint was not found" }));

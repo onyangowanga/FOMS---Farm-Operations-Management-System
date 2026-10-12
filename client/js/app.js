@@ -1,7 +1,8 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.3.1";
-import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.3.1";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.4.0";
+import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.4.0";
 import { offlineStore } from "./offline.js";
-import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.3.1";
+import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.4.0";
+import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.4.0";
 
 const app = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast-root");
@@ -14,7 +15,7 @@ const config = {
   farms: { title: "Farms", singular: "farm", endpoint: "farms", roles: ["OWNER", "MANAGER"], fields: [["name", "Farm name", "text", true], ["location", "Location", "text"], ["acreage", "Total acreage", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["description", "Notes", "textarea"]], columns: [["name", "Farm"], ["location", "Location"], ["acreage", "Acres"], ["latitude", "Latitude"], ["longitude", "Longitude"]] },
   blocks: { title: "Farm blocks", singular: "block", endpoint: "blocks", roles: ["OWNER", "MANAGER"], fields: [["farmId", "Farm", "farm", true], ["name", "Block name", "text", true], ["acreage", "Area (acres)", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["currentUse", "Current use", "text"], ["soilType", "Soil type", "text"]], columns: [["name", "Block"], ["farmId", "Farm"], ["acreage", "Acres"], ["currentUse", "Current use"], ["soilType", "Soil type"]] },
   crops: { title: "Crop management", singular: "crop cycle", endpoint: "crops", roles: ["OWNER", "MANAGER", "AGRONOMIST"] },
-  livestock: { title: "Livestock", singular: "livestock record", endpoint: "livestock", roles: ["OWNER", "MANAGER"], fields: [["farmId", "Farm", "farm", true], ["species", "Species", "select", true, ["GOAT", "SHEEP", "POULTRY"]], ["identifier", "ID / batch", "text"], ["breed", "Breed", "text"], ["quantity", "Quantity", "number"], ["healthStatus", "Health", "select", false, ["HEALTHY", "UNDER_TREATMENT", "SICK", "DECEASED"]], ["weightKg", "Weight (kg)", "number"], ["lastVaccinated", "Last vaccinated", "date"], ["notes", "Notes", "textarea"]], columns: [["species", "Species"], ["identifier", "ID / batch"], ["breed", "Breed"], ["quantity", "Quantity"], ["healthStatus", "Health"]] },
+  livestock: { title: "Livestock", singular: "livestock record", endpoint: "livestock", roles: ["OWNER", "MANAGER"] },
   tasks: { title: "Tasks", singular: "task", endpoint: "tasks", roles: ["OWNER", "MANAGER"], fields: [["title", "Task title", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "text"], ["description", "Description", "textarea"], ["assignedTo", "Assign to", "team"], ["priority", "Priority", "select", false, ["LOW", "MEDIUM", "HIGH", "URGENT"]], ["dueDate", "Due date", "date"]], columns: [["title", "Task"], ["category", "Category"], ["priority", "Priority"], ["dueDate", "Due"], ["status", "Status"]] },
   journal: { title: "Daily reports", singular: "daily report", endpoint: "journal", roles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"] },
   expenses: { title: "Expenses", singular: "expense", endpoint: "expenses", roles: ["OWNER", "MANAGER"], fields: [["description", "Description", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "select", true, ["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"]], ["amount", "Amount (KES)", "number", true], ["supplier", "Supplier", "text"], ["expenseDate", "Date", "date"], ["paymentMethod", "Payment method", "text"], ["notes", "Notes", "textarea"]], columns: [["description", "Expense"], ["category", "Category"], ["supplier", "Supplier"], ["amount", "Amount"], ["expenseDate", "Date"], ["approvedAt", "Approval"]] }
@@ -577,6 +578,7 @@ async function startCreate(page) {
       : ["SOIL_REPORT", "WATER_ANALYSIS", "PATHOLOGY_REPORT", "FARM_LICENSE", "PURCHASE_RECEIPT", "AGRONOMIST_REPORT", "FARM_PHOTO", "OTHER"];
     openDocumentModal(categories);
   } else if (page === "crops") await openCropModal();
+  else if (page === "livestock") await openLivestockModal();
   else openRecordModal(page);
 }
 
@@ -681,6 +683,7 @@ async function renderPage() {
     else if (currentPage === "clients") await renderClients();
     else if (currentPage === "account") renderAccount();
     else if (currentPage === "crops") await renderCrops(location.hash.split("/")[1]);
+    else if (currentPage === "livestock") await renderLivestock(location.hash.split("/")[1]);
     else if (currentPage === "team") await renderWorkspaceTeam();
     else if (currentPage === "journal") await renderReports();
     else if (config[currentPage]) await renderResource(currentPage);
@@ -764,6 +767,7 @@ configureV03({
   signedOut: () => { currentUser = null; mobileOpen = false; setOfflineIdentity(null); renderAuth(); }
 });
 configureReports({ escapeHtml, showToast, loadAll, getUser: () => currentUser });
+configureLivestock({ escapeHtml, showToast, loadAll, navigate });
 window.addEventListener("hashchange", async () => {
   if (location.hash.startsWith("#setup/")) {
     currentUser = null;

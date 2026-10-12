@@ -7,16 +7,13 @@ import { writeAudit } from "../../shared/audit.js";
 
 const nullableText = z.string().trim().max(2000).nullable().optional();
 const nullableDate = z.coerce.date().nullable().optional();
-const nullableNumber = z.coerce.number().finite().nonnegative().nullable().optional();
 const uuid = z.uuid();
 const schemas = {
-  livestock: z.object({ farmId: uuid, species: z.enum(["GOAT", "SHEEP", "POULTRY"]), identifier: nullableText, breed: nullableText, quantity: z.coerce.number().int().min(1).max(100000).optional(), birthDate: nullableDate, weightKg: nullableNumber, healthStatus: z.enum(["HEALTHY", "UNDER_TREATMENT", "SICK", "DECEASED"]).optional(), lastVaccinated: nullableDate, notes: nullableText }),
   tasks: z.object({ farmId: uuid.nullable().optional(), title: z.string().trim().min(2).max(160), description: nullableText, category: nullableText, status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "APPROVED"]).optional(), priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(), dueDate: nullableDate, assignedTo: uuid.nullable().optional(), evidenceUrl: z.string().url().nullable().optional() }),
   expenses: z.object({ farmId: uuid.nullable().optional(), description: z.string().trim().min(2).max(200), category: z.enum(["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"]), supplier: nullableText, amount: z.coerce.number().positive(), currency: z.string().trim().length(3).toUpperCase().optional(), paymentMethod: nullableText, expenseDate: nullableDate, notes: nullableText })
 };
 
 const config = {
-  livestock: { delegate: "livestock", entity: "Livestock", creator: "createdBy", roles: ["OWNER", "MANAGER"], readRoles: ["OWNER", "MANAGER", "WORKER"] },
   tasks: { delegate: "task", entity: "Task", creator: "createdBy", roles: ["OWNER", "MANAGER"], readRoles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"] },
   expenses: { delegate: "expense", entity: "Expense", creator: "createdBy", roles: ["OWNER", "MANAGER"], readRoles: ["OWNER", "MANAGER"] }
 };

@@ -27,7 +27,7 @@ async function apiRequest(path, options = {}) {
     });
   } catch (error) {
     if (method !== "GET" && !path.startsWith("/auth/")) {
-      if (options.queueOffline === false || /^\/(admin|team)(\/|$)/.test(path)) throw new Error("You are offline. Reconnect before managing accounts or uploading files.");
+      if (options.queueOffline === false || /^\/(admin|team|livestock)(\/|$)/.test(path)) throw new Error("You are offline. Reconnect before managing accounts, livestock or uploading files.");
       await offlineStore.enqueue({ path, method, body: options.body, identity: offlineIdentity });
       return { success: true, queued: true, message: "Saved on this device. It will sync when you are back online." };
     }

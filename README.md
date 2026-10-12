@@ -31,6 +31,18 @@ docker compose run --rm --no-deps --volume app_foms-uploads:/app/uploads -e FOMS
 
 Test workspaces are generated uniquely and removed afterward; never run these tests against production.
 
+## Version 0.4 - Livestock management
+
+- Goats, sheep and poultry support individual animals or batches, with identification, breed, birth/hatch date, age, living quantity and weight per animal.
+- Owners/managers can manage profiles and log dated vaccination (including next due date), health, weight and mortality records. Workers retain daily-report access only; agronomists do not access livestock management.
+- Poultry also have feed-consumption records in kg and egg-production counts; totals are shown on their detail page. These do not create inventory, expenses or sales automatically.
+- Mortality is deducted atomically from living quantity, never below zero. Complete mortality marks the record deceased; dashboard totals count living animals. Events remain append-only and archived profiles retain history.
+- Existing groups are migrated as batches when quantity exceeds one; existing deceased records retain their original quantity as initial quantity and become zero living animals. Legacy vaccination dates remain without fabricated history.
+- Initial quantity may be corrected before history exists; quantity/farm/species/tracking mode lock once history is recorded. New health, weight and vaccination observations must use activity records; backdated logs do not overwrite newer observed values.
+- Lists and clickable profiles use mobile cards; daily-report selectors continue linking to the same livestock IDs.
+- Livestock writes require a connection. Browser activity requests carry a reusable UUID so retrying the same save cannot deduct mortality twice.
+- API: `GET/POST /livestock`, `GET/PATCH/DELETE /livestock/:id`, `GET/POST /livestock/:id/events`. Lists support `page`/`limit`, and livestock lists also support `farmId`/`species`. Events accept `requestId` for safe retries. Event editing/deletion, acquisitions/transfers, breeding and automatic feed-stock integration are not part of this release.
+
 ## Local development
 
 Requirements: Node.js 20+, npm, and PostgreSQL 14+.

@@ -291,10 +291,14 @@ model Livestock {
   identifier     String?
   breed          String?
   quantity       Int          @default(1)
+  trackingMode   String       @default("INDIVIDUAL")
+  initialQuantity Int         @default(1)
   birthDate      DateTime?
   weightKg       Float?
   healthStatus   String       @default("HEALTHY")
   lastVaccinated DateTime?
+  healthObservedAt DateTime?
+  weightObservedAt DateTime?
   notes          String?
   createdBy      String?      @db.Uuid
   createdAt      DateTime     @default(now())
@@ -304,8 +308,28 @@ model Livestock {
   farm           Farm         @relation(fields: [farmId], references: [id], onDelete: Cascade)
   creator        User?        @relation("LivestockCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   journalEntries JournalEntry[]
+  events         LivestockEvent[]
 
   @@index([organizationId, farmId, species, deletedAt])
+}
+
+model LivestockEvent {
+  id             String    @id @default(uuid()) @db.Uuid
+  livestockId    String    @db.Uuid
+  type           String
+  occurredAt     DateTime
+  title          String?
+  quantity       Int?
+  weightKg       Float?
+  feedKg         Float?
+  healthStatus   String?
+  nextDueAt      DateTime?
+  notes          String?
+  recordedBy     String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  livestock      Livestock @relation(fields: [livestockId], references: [id], onDelete: Cascade)
+
+  @@index([livestockId, occurredAt, id])
 }
 
 model Task {
