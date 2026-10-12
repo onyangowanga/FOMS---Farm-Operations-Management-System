@@ -1,28 +1,17 @@
-import crypto from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { Router } from "express";
 import multer from "multer";
-import { fileTypeFromBuffer } from "file-type";
 import { z } from "zod";
 import { prisma } from "../../config/database.js";
 import { authorize } from "../../middleware/authenticate.js";
 import { AppError } from "../../shared/errors.js";
 import { writeAudit } from "../../shared/audit.js";
+import { storeUpload, removeUpload, readUpload } from "../../shared/uploads.js";
 
 const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 4, fieldSize: 2000 }
 });
-const uploadRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../uploads");
-const allowedTypes = new Map([
-  ["application/pdf", "pdf"],
-  ["image/jpeg", "jpg"],
-  ["image/png", "png"],
-  ["image/webp", "webp"]
-]);
 const categories = ["SOIL_REPORT", "WATER_ANALYSIS", "PATHOLOGY_REPORT", "FARM_LICENSE", "PURCHASE_RECEIPT", "AGRONOMIST_REPORT", "FARM_PHOTO", "OTHER"];
 
 router.get("/", async (req, res, next) => {
@@ -54,37 +43,32 @@ router.post("/", authorize("OWNER", "MANAGER", "AGRONOMIST", "WORKER"), upload.s
       select: { id: true }
     }))) throw new AppError(400, "The selected farm is not available in this workspace");
 
-    const detected = await fileTypeFromBuffer(req.file.buffer);
-    const extension = detected && allowedTypes.get(detected.mime);
-    if (!detected || !extension) {
-      throw new AppError(415, "Unsupported file type. Upload a PDF, JPEG, PNG, or WebP file.");
-    }
-    const id = crypto.randomUUID();
-    const storageName = `${req.auth.organizationId}/${id}.${extension}`;
-    const organizationDirectory = path.resolve(uploadRoot, req.auth.organizationId);
-    await mkdir(organizationDirectory, { recursive: true, mode: 0o750 });
-    savedPath = path.join(organizationDirectory, `${id}.${extension}`);
-    await writeFile(savedPath, req.file.buffer, { flag: "wx", mode: 0o640 });
-    const originalName = path.basename(req.file.originalname.replaceAll("\\", "/")).replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 255) || `upload.${extension}`;
-    const document = await prisma.document.create({
+    const description = req.body.description ? z.string().trim().max(500).parse(req.body.description) : null;
+    const stored = await storeUpload(req.auth.organizationId, req.file);
+    savedPath = stored.savedPath;
+    const document = await prisma.$transaction(async (tx) => {
+      const document = await tx.document.create({
       data: {
-        id,
+        id: stored.id,
         organizationId: req.auth.organizationId,
         farmId,
         category,
-        originalName,
-        storageName,
-        mimeType: detected.mime,
+        originalName: stored.originalName,
+        storageName: stored.storageName,
+        mimeType: stored.mimeType,
         sizeBytes: req.file.size,
-        description: req.body.description ? z.string().trim().max(500).parse(req.body.description) : null,
+        description,
         uploadedBy: req.auth.userId
       },
       include: { farm: { select: { id: true, name: true } }, uploader: { select: { id: true, name: true } } }
+      });
+      await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "UPLOAD", entity: "Document", entityId: document.id }, tx);
+      return document;
     });
-    await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "UPLOAD", entity: "Document", entityId: document.id });
+    savedPath = null;
     res.status(201).json({ success: true, message: "Document uploaded", data: document });
   } catch (error) {
-    if (savedPath) await unlink(savedPath).catch((cleanupError) => console.error("Uploaded file cleanup failed", cleanupError));
+    if (savedPath) await removeUpload(savedPath);
     next(error);
   }
 });
@@ -101,9 +85,7 @@ router.get("/:id/download", async (req, res, next) => {
       }
     });
     if (!document) throw new AppError(404, "Document was not found");
-    const filePath = path.resolve(uploadRoot, document.storageName);
-    if (!filePath.startsWith(`${uploadRoot}${path.sep}`)) throw new AppError(400, "Invalid document storage path");
-    const content = await readFile(filePath);
+    const content = await readUpload(document.storageName, req.auth.organizationId);
     res.setHeader("Content-Type", document.mimeType);
     res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(document.originalName)}`);
     res.setHeader("X-Content-Type-Options", "nosniff");

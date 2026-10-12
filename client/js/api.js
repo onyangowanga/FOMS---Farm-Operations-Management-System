@@ -1,15 +1,17 @@
 import { offlineStore } from "./offline.js";
 
 let offlineIdentity = "anonymous";
+let offlineCacheScope = "anonymous";
 export function setOfflineIdentity(identity) {
   offlineIdentity = identity ? `${identity.organizationId}:${identity.userId}` : "anonymous";
+  offlineCacheScope = identity ? `${offlineIdentity}:${identity.role}` : "anonymous";
 }
 
 async function apiRequest(path, options = {}) {
   const method = options.method || "GET";
   if (!navigator.onLine && method === "GET") {
     if (/^\/(auth|admin|team)(\/|$)/.test(path)) throw new Error("Reconnect to verify your sign-in and manage accounts.");
-    const cached = await offlineStore.get(`${offlineIdentity}:${path}`);
+    const cached = await offlineStore.get(`${offlineCacheScope}:${path}`);
     if (cached !== undefined) return cached;
     throw new Error("You are offline and this information has not been saved on this device yet.");
   }
@@ -42,7 +44,7 @@ async function apiRequest(path, options = {}) {
       : "";
     throw new Error(validation || body.message || "The request could not be completed");
   }
-  if (method === "GET" && !/^\/(auth|admin|team)(\/|$)/.test(path)) await offlineStore.put(`${offlineIdentity}:${path}`, body);
+  if (method === "GET" && !/^\/(auth|admin|team)(\/|$)/.test(path)) await offlineStore.put(`${offlineCacheScope}:${path}`, body);
   return body;
 }
 

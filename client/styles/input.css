@@ -19,6 +19,29 @@
 
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { scrollbar-width: none; }
+[hidden] { display: none !important; }
 a { text-decoration: none; color: #464feb; }
 tr th, tr td { border: 1px solid #e6e6e6; }
 tr th { background-color: #f5f5f5; }
+
+@media (max-width: 1023px) {
+  .responsive-records { overflow-x: visible; min-width: 0; }
+  .responsive-table { display: block; width: 100%; min-width: 0 !important; }
+  .responsive-table thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0);
+  }
+  .responsive-table tbody { display: block; width: 100%; }
+  .responsive-table tr {
+    display: block; margin: 0.75rem; padding: 0.5rem; border: 1px solid #e6e6e6; border-radius: 0.75rem;
+  }
+  .responsive-table td {
+    display: block; width: auto; padding: 0.5rem; border: 0; overflow-wrap: anywhere;
+  }
+  .responsive-table td[data-label]::before {
+    content: attr(data-label); display: block; margin-bottom: 0.2rem; font-size: 0.7rem;
+    font-weight: 600; color: #64748b;
+  }
+  .responsive-table td > div { flex-wrap: wrap; }
+  .responsive-table td .truncate { white-space: normal; overflow: visible; max-width: none; }
+  .responsive-table td button { white-space: normal; }
+}

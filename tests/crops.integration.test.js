@@ -28,7 +28,8 @@ test("crop nursery planning, lifecycle history, irrigation, fertilizer and harve
     for (const record of [{ type: "IRRIGATION", quantity: 250, unit: "litres" }, { type: "FERTILIZER", quantity: 10, unit: "kg", product: "NPK" }, { type: "HARVEST", quantity: 400, unit: "kg" }]) {
       assert.equal((await request(`/crops/${id}/activities`, "POST", { ...record, occurredAt: "2026-06-01" }, owner.cookie)).status, 201);
     }
-    const detail = (await request(`/crops/${id}`, "GET", undefined, worker.cookie)).body.data;
+    assert.equal((await request(`/crops/${id}`, "GET", undefined, worker.cookie)).status, 403);
+    const detail = (await request(`/crops/${id}`, "GET", undefined, owner.cookie)).body.data;
     assert.equal(detail.status, "HARVESTED");
     assert.equal(detail.stages.length, 5);
     assert.equal(detail.activities.length, 3);

@@ -67,6 +67,8 @@ Implemented in the Version 0.2 update: organization hierarchy and owner-only wor
 
 Implemented in Version 0.3: client-scoped crop master data, nursery/transplant planning and expected harvest dates, crop detail pages, explicit observed stage changes with preserved history, irrigation and fertilizer logs, and harvest records with unit-specific totals. Includes username login, admin-only client onboarding, workspace user management, password changes and compact linked mobile dashboard cards. Stages do not advance automatically; harvest logs do not create sales or stock movements.
 
+Version 0.3.1 polishing (before Version 0.4): per-cycle yielding-day harvest suggestions, custom activities and specified units, admin client editing and single-use 24-hour password resets with mandatory password change, timestamped crop/livestock/general daily reports with optional private photos, stacked mobile records, and worker-only dashboard/assigned-task/own-report/account access. Full Version 0.4 livestock features remain a separate release.
+
 ## Version 0.4 - Livestock Management
 
 - Goats

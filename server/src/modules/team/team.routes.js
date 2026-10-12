@@ -8,6 +8,7 @@ import { writeAudit } from "../../shared/audit.js";
 import { accountSchema } from "../auth/account.validation.js";
 
 const router = Router();
+router.use(authorize("OWNER", "MANAGER"));
 const roles = z.enum(["OWNER", "MANAGER", "AGRONOMIST", "WORKER"]);
 const memberSchema = accountSchema.extend({ role: roles });
 const publicUser = { id: true, name: true, email: true, username: true };

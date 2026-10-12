@@ -88,6 +88,9 @@ model User {
   username       String       @unique
   isPlatformAdmin Boolean     @default(false)
   sessionVersion Int          @default(0)
+  mustChangePassword Boolean  @default(false)
+  temporaryPasswordHash String?
+  temporaryPasswordExpiresAt DateTime?
   passwordHash   String
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -226,6 +229,8 @@ model CropCycle {
   requiresNursery Boolean    @default(false)
   nurseryDays    Int?
   transplantDate DateTime?
+  yieldingDays   Int?
+  journalEntries JournalEntry[]
   stages         CropStage[]
   activities     CropActivity[]
   cropType       CropType?   @relation(fields: [cropTypeId], references: [id], onDelete: SetNull)
@@ -264,9 +269,11 @@ model CropActivity {
   id         String    @id @default(uuid()) @db.Uuid
   cropId     String    @db.Uuid
   type       String
+  customActivity String?
   occurredAt DateTime
   quantity   Float
   unit       String
+  customUnit String?
   product    String?
   notes      String?
   recordedBy String?   @db.Uuid
@@ -296,6 +303,7 @@ model Livestock {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   farm           Farm         @relation(fields: [farmId], references: [id], onDelete: Cascade)
   creator        User?        @relation("LivestockCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  journalEntries JournalEntry[]
 
   @@index([organizationId, farmId, species, deletedAt])
 }
@@ -337,6 +345,12 @@ model JournalEntry {
   incident       String?
   cost           Float        @default(0)
   photoUrl       String?
+  cropId         String?      @db.Uuid
+  livestockId    String?      @db.Uuid
+  subjectType    String       @default("GENERAL")
+  photoStorageName String?
+  photoMimeType  String?
+  photoOriginalName String?
   observedAt     DateTime     @default(now())
   authorId       String?      @db.Uuid
   createdAt      DateTime     @default(now())
@@ -346,6 +360,8 @@ model JournalEntry {
   farm           Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
   block          Block?       @relation(fields: [blockId], references: [id], onDelete: SetNull)
   author         User?        @relation("JournalAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  crop           CropCycle?   @relation(fields: [cropId], references: [id], onDelete: SetNull)
+  livestock      Livestock?   @relation(fields: [livestockId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, observedAt, deletedAt])
 }

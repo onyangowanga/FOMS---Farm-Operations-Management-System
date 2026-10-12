@@ -13,6 +13,7 @@ import inventoryRoutes from "./modules/inventory/inventory.routes.js";
 import salesRoutes from "./modules/sales/sales.routes.js";
 import documentsRoutes from "./modules/documents/documents.routes.js";
 import cropRoutes from "./modules/resources/crop.routes.js";
+import journalRoutes from "./modules/resources/journal.routes.js";
 import { createResourceRouter } from "./modules/resources/resource.routes.js";
 import { createStructureRouter, organizationRouter } from "./modules/resources/structure.routes.js";
 import { authenticate } from "./middleware/authenticate.js";
@@ -42,6 +43,7 @@ app.use("/api/v1", authenticate);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1", (req, _res, next) => {
   if (!req.auth.organizationId) return next(new AppError(403, "FOMS Admin access is separate from client workspaces"));
+  if (req.auth.role === "WORKER" && !["dashboard", "tasks", "journal"].includes(req.path.split("/")[1])) return next(new AppError(403, "Workers can access assigned tasks and their daily reports only"));
   next();
 });
 app.use("/api/v1/dashboard", dashboardRoutes);
@@ -53,7 +55,8 @@ app.use("/api/v1/organization", organizationRouter);
 app.use("/api/v1/farms", createStructureRouter("farms"));
 app.use("/api/v1/blocks", createStructureRouter("blocks"));
 app.use("/api/v1/crops", cropRoutes);
-for (const [path, name] of Object.entries({ livestock: "livestock", tasks: "tasks", journal: "journal", expenses: "expenses" })) {
+app.use("/api/v1/journal", journalRoutes);
+for (const [path, name] of Object.entries({ livestock: "livestock", tasks: "tasks", expenses: "expenses" })) {
   app.use(`/api/v1/${path}`, createResourceRouter(name));
 }
 app.use("/api/v1", (_req, res) => res.status(404).json({ success: false, message: "API endpoint was not found" }));

@@ -19,8 +19,8 @@ const cookieOptions = {
 const ACCESS_TTL = "15m";
 const REFRESH_DAYS = 30;
 
-function issueAccessToken(userId, organizationId, sessionVersion) {
-  return jwt.sign({ organizationId, sessionVersion }, process.env.JWT_ACCESS_SECRET, { subject: userId, expiresIn: ACCESS_TTL });
+function issueAccessToken(userId, organizationId, sessionVersion, passwordChangeRequired = false) {
+  return jwt.sign({ organizationId, sessionVersion, passwordChangeRequired }, process.env.JWT_ACCESS_SECRET, { subject: userId, expiresIn: ACCESS_TTL });
 }
 
 async function issueRefreshToken(userId, organizationId, res, sessionVersion) {
@@ -31,8 +31,8 @@ async function issueRefreshToken(userId, organizationId, res, sessionVersion) {
   res.cookie("refreshToken", rawToken, { ...cookieOptions, maxAge: REFRESH_DAYS * 24 * 60 * 60 * 1000 });
 }
 
-function setAccessCookie(userId, organizationId, res, sessionVersion) {
-  res.cookie("accessToken", issueAccessToken(userId, organizationId, sessionVersion), {
+function setAccessCookie(userId, organizationId, res, sessionVersion, passwordChangeRequired = false) {
+  res.cookie("accessToken", issueAccessToken(userId, organizationId, sessionVersion, passwordChangeRequired), {
     ...cookieOptions,
     maxAge: 15 * 60 * 1000
   });
@@ -63,17 +63,30 @@ router.post("/setup", async (req, res, next) => {
 router.post("/login", async (req, res, next) => {
   try {
     const payload = loginSchema.parse(req.body);
-    const user = await prisma.user.findUnique({ where: { username: payload.username }, include: { memberships: { include: { organization: true } } } });
-    if (!user || user.deletedAt || !(await bcrypt.compare(payload.password, user.passwordHash))) throw new AppError(401, "Username or password is incorrect");
-    const membership = user.memberships.find((item) => !item.organization.deletedAt);
-    if (!user.isPlatformAdmin && !membership) throw new AppError(403, "This account has no active farm workspace");
+    const { user, membership } = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "User" WHERE username = ${payload.username} FOR UPDATE`;
+      const user = await tx.user.findUnique({ where: { username: payload.username }, include: { memberships: { include: { organization: true } } } });
+      if (!user || user.deletedAt) throw new AppError(401, "Username or password is incorrect");
+      const membership = user.memberships.find((item) => !item.organization.deletedAt);
+      if (!user.isPlatformAdmin && !membership) throw new AppError(403, "This account has no active farm workspace");
+      if (user.mustChangePassword) {
+        if (!user.temporaryPasswordHash || !user.temporaryPasswordExpiresAt || user.temporaryPasswordExpiresAt <= new Date() || !(await bcrypt.compare(payload.password, user.temporaryPasswordHash))) throw new AppError(401, "Temporary password is invalid, expired or already used. Contact FOMS Admin for a new reset.");
+        const updated = await tx.user.update({ where: { id: user.id }, data: { temporaryPasswordExpiresAt: null, sessionVersion: { increment: 1 } } });
+        user.sessionVersion = updated.sessionVersion;
+        await tx.refreshToken.deleteMany({ where: { userId: user.id } });
+      } else if (!(await bcrypt.compare(payload.password, user.passwordHash))) {
+        throw new AppError(401, "Username or password is incorrect");
+      }
+      return { user, membership };
+    });
     const organizationId = user.isPlatformAdmin ? null : membership.organizationId;
-    setAccessCookie(user.id, organizationId, res, user.sessionVersion);
-    await issueRefreshToken(user.id, organizationId, res, user.sessionVersion);
+    setAccessCookie(user.id, organizationId, res, user.sessionVersion, user.mustChangePassword);
+    if (user.mustChangePassword) res.clearCookie("refreshToken", cookieOptions);
+    else await issueRefreshToken(user.id, organizationId, res, user.sessionVersion);
     res.json({
       success: true,
       message: "Signed in successfully",
-      data: { user: { id: user.id, name: user.name, email: user.email, username: user.username }, organization: user.isPlatformAdmin ? { id: null, name: "FOMS Administration" } : { id: membership.organization.id, name: membership.organization.name }, role: user.isPlatformAdmin ? "FOMS_ADMIN" : membership.role }
+      data: { user: { id: user.id, name: user.name, email: user.email, username: user.username }, organization: user.isPlatformAdmin ? { id: null, name: "FOMS Administration" } : { id: membership.organization.id, name: membership.organization.name }, role: user.isPlatformAdmin ? "FOMS_ADMIN" : membership.role, passwordChangeRequired: user.mustChangePassword }
     });
   } catch (error) {
     next(error);
@@ -86,7 +99,7 @@ router.post("/refresh", async (req, res, next) => {
     if (!rawToken) throw new AppError(401, "Please sign in again");
     const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
     const stored = await prisma.refreshToken.findUnique({ where: { tokenHash }, include: { user: true } });
-    if (!stored || stored.expiresAt <= new Date() || stored.user.deletedAt || stored.sessionVersion !== stored.user.sessionVersion) throw new AppError(401, "Your session has expired");
+    if (!stored || stored.expiresAt <= new Date() || stored.user.deletedAt || stored.user.mustChangePassword || stored.sessionVersion !== stored.user.sessionVersion) throw new AppError(401, "Your session has expired");
     if (stored.organizationId === null) {
       if (!stored.user.isPlatformAdmin) throw new AppError(401, "Your administrator access is no longer valid");
     } else {
@@ -131,13 +144,16 @@ router.post("/logout", async (req, res, next) => {
 
 router.post("/password", authenticate, async (req, res, next) => {
   try {
-    const payload = z.object({ currentPassword: z.string().min(1).max(72), password: passwordSchema }).parse(req.body);
+    const payload = z.object({ currentPassword: z.string().min(1).max(72).optional(), password: passwordSchema }).strict().parse(req.body);
     if (payload.currentPassword === payload.password) throw new AppError(400, "Choose a different password");
     await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${req.auth.userId}::uuid FOR UPDATE`;
       const user = await tx.user.findUniqueOrThrow({ where: { id: req.auth.userId } });
-      if (!(await bcrypt.compare(payload.currentPassword, user.passwordHash))) throw new AppError(400, "Current password is incorrect");
-      await tx.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(payload.password, 12), sessionVersion: { increment: 1 } } });
+      if (user.sessionVersion !== req.auth.sessionVersion) throw new AppError(401, "Your session is no longer valid");
+      if (!user.mustChangePassword && (!payload.currentPassword || !(await bcrypt.compare(payload.currentPassword, user.passwordHash)))) throw new AppError(400, "Current password is incorrect");
+      if (user.mustChangePassword && user.temporaryPasswordHash && await bcrypt.compare(payload.password, user.temporaryPasswordHash)) throw new AppError(400, "Choose a new password, not the temporary password");
+      if (await bcrypt.compare(payload.password, user.passwordHash)) throw new AppError(400, "Choose a new password, not your previous password");
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(payload.password, 12), sessionVersion: { increment: 1 }, mustChangePassword: false, temporaryPasswordHash: null, temporaryPasswordExpiresAt: null } });
       await tx.refreshToken.deleteMany({ where: { userId: user.id } });
     });
     res.clearCookie("accessToken", cookieOptions);
@@ -147,7 +163,7 @@ router.post("/password", authenticate, async (req, res, next) => {
 });
 
 router.get("/me", authenticate, async (req, res) => {
-  res.json({ success: true, data: { user: { id: req.auth.userId, name: req.auth.name, email: req.auth.email, username: req.auth.username }, organization: { id: req.auth.organizationId, name: req.auth.organizationName }, role: req.auth.role } });
+  res.json({ success: true, data: { user: { id: req.auth.userId, name: req.auth.name, email: req.auth.email, username: req.auth.username }, organization: { id: req.auth.organizationId, name: req.auth.organizationName }, role: req.auth.role, passwordChangeRequired: req.auth.passwordChangeRequired } });
 });
 
 export default router;

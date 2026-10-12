@@ -1,12 +1,13 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.3.0";
-import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.3.0";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.3.1";
+import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.3.1";
 import { offlineStore } from "./offline.js";
+import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.3.1";
 
 const app = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast-root");
 const navGroups = [
   { title: "OVERVIEW", items: [["dashboard", "◫", "Dashboard"], ["structure", "▦", "Farm structure"]] },
-  { title: "FARM OPERATIONS", items: [["farms", "⌂", "Farms"], ["blocks", "▦", "Blocks"], ["crops", "❋", "Crops"], ["livestock", "♧", "Livestock"], ["tasks", "☑", "Tasks"], ["journal", "▤", "Farm journal"]] },
+  { title: "FARM OPERATIONS", items: [["farms", "⌂", "Farms"], ["blocks", "▦", "Blocks"], ["crops", "❋", "Crops"], ["livestock", "♧", "Livestock"], ["tasks", "☑", "Tasks"], ["journal", "▤", "Daily reports"]] },
   { title: "MANAGEMENT", items: [["inventory", "▤", "Inventory"], ["sales", "$", "Sales & invoices"], ["expenses", "↗", "Expenses"], ["documents", "▧", "Documents"], ["team", "♙", "Team"], ["account", "⚙", "Account"]] }
 ];
 const config = {
@@ -15,7 +16,7 @@ const config = {
   crops: { title: "Crop management", singular: "crop cycle", endpoint: "crops", roles: ["OWNER", "MANAGER", "AGRONOMIST"] },
   livestock: { title: "Livestock", singular: "livestock record", endpoint: "livestock", roles: ["OWNER", "MANAGER"], fields: [["farmId", "Farm", "farm", true], ["species", "Species", "select", true, ["GOAT", "SHEEP", "POULTRY"]], ["identifier", "ID / batch", "text"], ["breed", "Breed", "text"], ["quantity", "Quantity", "number"], ["healthStatus", "Health", "select", false, ["HEALTHY", "UNDER_TREATMENT", "SICK", "DECEASED"]], ["weightKg", "Weight (kg)", "number"], ["lastVaccinated", "Last vaccinated", "date"], ["notes", "Notes", "textarea"]], columns: [["species", "Species"], ["identifier", "ID / batch"], ["breed", "Breed"], ["quantity", "Quantity"], ["healthStatus", "Health"]] },
   tasks: { title: "Tasks", singular: "task", endpoint: "tasks", roles: ["OWNER", "MANAGER"], fields: [["title", "Task title", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "text"], ["description", "Description", "textarea"], ["assignedTo", "Assign to", "team"], ["priority", "Priority", "select", false, ["LOW", "MEDIUM", "HIGH", "URGENT"]], ["dueDate", "Due date", "date"]], columns: [["title", "Task"], ["category", "Category"], ["priority", "Priority"], ["dueDate", "Due"], ["status", "Status"]] },
-  journal: { title: "Farm journal", singular: "journal entry", endpoint: "journal", roles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"], fields: [["title", "Entry title", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "select", false, ["OBSERVATION", "ACTIVITY", "PEST_DISEASE", "WEATHER", "RECOMMENDATION"]], ["body", "What happened?", "textarea", true], ["weather", "Weather", "text"], ["incident", "Pest or disease incident", "textarea"], ["cost", "Cost (KES)", "number"], ["observedAt", "Date observed", "date"]], columns: [["title", "Entry"], ["category", "Type"], ["body", "Details"], ["observedAt", "Date"]] },
+  journal: { title: "Daily reports", singular: "daily report", endpoint: "journal", roles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"] },
   expenses: { title: "Expenses", singular: "expense", endpoint: "expenses", roles: ["OWNER", "MANAGER"], fields: [["description", "Description", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "select", true, ["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"]], ["amount", "Amount (KES)", "number", true], ["supplier", "Supplier", "text"], ["expenseDate", "Date", "date"], ["paymentMethod", "Payment method", "text"], ["notes", "Notes", "textarea"]], columns: [["description", "Expense"], ["category", "Category"], ["supplier", "Supplier"], ["amount", "Amount"], ["expenseDate", "Date"], ["approvedAt", "Approval"]] }
 };
 
@@ -26,6 +27,16 @@ let farms = [];
 let teamMembers = [];
 let blocks = [];
 let selectedFarmId = "";
+let tableObserver;
+
+function allowedPages() {
+  if (currentUser.passwordChangeRequired) return ["account"];
+  if (currentUser.role === "FOMS_ADMIN") return ["clients", "account"];
+  if (currentUser.role === "WORKER") return ["dashboard", "tasks", "journal", "account"];
+  return navGroups.flatMap((group) => group.items.map(([page]) => page)).filter((page) =>
+    (!["expenses", "sales", "team"].includes(page) || ["OWNER", "MANAGER"].includes(currentUser.role)) &&
+    (page !== "livestock" || currentUser.role !== "AGRONOMIST"));
+}
 
 async function loadAll(path) {
   const separator = path.includes("?") ? "&" : "?";
@@ -92,23 +103,25 @@ function renderAuth() {
       const response = await api.post("/auth/login", form);
       currentUser = response.data;
       mobileOpen = false;
-      currentPage = currentUser.role === "FOMS_ADMIN" ? "clients" : "dashboard";
+      currentPage = currentUser.passwordChangeRequired ? "account" : currentUser.role === "FOMS_ADMIN" ? "clients" : "dashboard";
       history.replaceState(null, "", `#${currentPage}`);
-      setOfflineIdentity({ organizationId: currentUser.organization.id, userId: currentUser.user.id });
+      setOfflineIdentity({ organizationId: currentUser.organization.id, userId: currentUser.user.id, role: currentUser.role });
       await renderApp();
     } catch (error) {
       const message = document.querySelector("#auth-error");
-      message.textContent = error.message;
-      message.classList.remove("hidden");
+      if (message) {
+        message.textContent = error.message;
+        message.classList.remove("hidden");
+      } else showToast(error.message, "error");
     } finally { button.disabled = false; }
   });
 }
 
 function shell() {
   const initials = currentUser.user.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
-  const visibleNavGroups = currentUser.role === "FOMS_ADMIN" ? [{ title: "ADMINISTRATION", items: [["clients", "♙", "Clients"], ["account", "⚙", "Account"]] }] : navGroups.map((group) => ({
+  const visibleNavGroups = currentUser.passwordChangeRequired ? [{ title: "PASSWORD RESET", items: [["account", "⚙", "Set new password"]] }] : currentUser.role === "FOMS_ADMIN" ? [{ title: "ADMINISTRATION", items: [["clients", "♙", "Clients"], ["account", "⚙", "Account"]] }] : navGroups.map((group) => ({
     ...group,
-    items: group.items.filter(([page]) => (!["expenses", "sales"].includes(page) || ["OWNER", "MANAGER"].includes(currentUser.role)) && (page !== "livestock" || currentUser.role !== "AGRONOMIST"))
+    items: group.items.filter(([page]) => allowedPages().includes(page))
   }));
   app.innerHTML = `
     <div class="min-h-screen lg:flex">
@@ -145,6 +158,9 @@ function shell() {
       </main>
       <div id="modal-root"></div>
     </div>`;
+  tableObserver?.disconnect();
+  tableObserver = new MutationObserver(makeTablesResponsive);
+  for (const target of ["#content", "#modal-root"]) tableObserver.observe(document.querySelector(target), { childList: true, subtree: true });
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.page)));
   document.querySelector("#open-mobile").addEventListener("click", () => { mobileOpen = true; renderApp(); });
   document.querySelector("#close-mobile")?.addEventListener("click", () => { mobileOpen = false; renderApp(); });
@@ -163,6 +179,10 @@ function shell() {
 }
 
 async function renderApp() {
+  if (!allowedPages().includes(currentPage)) {
+    currentPage = allowedPages()[0];
+    history.replaceState(null, "", `#${currentPage}`);
+  }
   shell();
   updateConnectivity();
   await renderPage();
@@ -170,6 +190,10 @@ async function renderApp() {
 }
 
 async function navigate(page) {
+  if (!allowedPages().includes(page)) {
+    showToast("You do not have access to this page.", "error");
+    return;
+  }
   currentPage = page;
   history.replaceState(null, "", `#${page}`);
   mobileOpen = false;
@@ -184,6 +208,12 @@ function metric(title, value, subtitle, symbol, tint = "bg-forest-50 text-forest
 async function renderDashboard() {
   const { data } = await api.get("/dashboard");
   const content = document.querySelector("#content");
+  if (currentUser.role === "WORKER") {
+    content.innerHTML = `<div class="mb-6 flex flex-wrap justify-between gap-3"><div><h1 class="text-2xl font-semibold">Your work today</h1><p class="mt-2 text-sm text-slate-500">Assigned tasks and your daily farm observations.</p></div><button id="worker-quick-add" class="btn-primary">Quick add daily report</button></div><div class="grid grid-cols-2 gap-3">${metric("Pending tasks", data.tasks.pending, "Assigned to you", "", undefined, "tasks")}${metric("In progress", data.tasks.inProgress, "Assigned to you", "", undefined, "tasks")}${metric("Completed tasks", data.tasks.completed + data.tasks.approved, "Submitted / approved", "", undefined, "tasks")}${metric("Daily reports", data.reportCount, "Your recorded observations", "", undefined, "journal")}</div><section class="card mt-5"><h2 class="font-semibold">Record today's observations</h2><p class="mt-2 text-sm text-slate-500">Choose a crop, livestock or general farm observation, add a date and time, and optionally take or upload a photo.</p><button id="worker-report" class="btn-primary mt-4">Add daily report</button></section>`;
+    content.querySelector("#worker-quick-add").onclick = openDailyReport;
+    content.querySelector("#worker-report").onclick = openDailyReport;
+    return;
+  }
   const totalAnimals = Object.values(data.livestock).reduce((sum, count) => sum + count, 0);
   content.innerHTML = `
     <div class="mb-7 flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium text-forest-600">FARM OVERVIEW</p><h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Good ${new Date().getHours() < 12 ? "morning" : "afternoon"}, ${escapeHtml(currentUser.user.name.split(" ")[0])}</h1><p class="mt-2 text-sm text-slate-500">Here's what's happening across your farm today.</p></div><button id="quick-add" class="btn-primary">${icon("+")} Quick add</button></div>
@@ -237,7 +267,7 @@ async function renderResource(page) {
   const content = document.querySelector("#content");
   content.innerHTML = `<div class="flex min-h-64 items-center justify-center text-sm text-slate-400">Loading ${escapeHtml(resource.title.toLowerCase())}…</div>`;
   const [{ data }, farmRecords, blockRecords] = await Promise.all([
-    api.get(`/${resource.endpoint}`), loadAll("/farms"),
+    api.get(`/${resource.endpoint}`), currentUser.role === "WORKER" ? Promise.resolve([]) : loadAll("/farms"),
     ["crops", "journal"].includes(page) ? loadAll("/blocks") : Promise.resolve([])
   ]);
   farms = farmRecords;
@@ -527,6 +557,11 @@ async function openDocumentModal(categories) {
 }
 
 async function startCreate(page) {
+  if (page === "journal") return openDailyReport();
+  if (!allowedPages().includes(page)) {
+    showToast("You do not have access to this page.", "error");
+    return;
+  }
   if (["expenses", "sales", "inventory"].includes(page) && !["OWNER", "MANAGER"].includes(currentUser.role)) {
     showToast("You do not have permission to create this record.", "error");
     return;
@@ -558,6 +593,7 @@ function fieldMarkup([key, label, type, required = false, options = []], values 
 }
 
 async function openRecordModal(page, values = {}) {
+  if (page === "journal") return openDailyReport();
   try {
   const resource = config[page];
   const editing = Boolean(values.id);
@@ -621,6 +657,7 @@ async function openRecordModal(page, values = {}) {
 }
 
 function openQuickAdd() {
+  if (currentUser.role === "WORKER") return openDailyReport();
   const root = document.querySelector("#modal-root");
   root.innerHTML = `<div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 sm:items-center sm:p-5"><div class="w-full max-w-md rounded-t-3xl bg-white p-6 sm:rounded-2xl"><div class="flex items-center justify-between"><h2 class="text-lg font-semibold">Quick add</h2><button data-close class="rounded-lg p-2 text-slate-400" aria-label="Close">✕</button></div><p class="mt-1 text-sm text-slate-500">What would you like to add?</p><div class="mt-5 grid grid-cols-2 gap-3">${[["farms", "⌂", "Farm"], ["crops", "❋", "Crop cycle"], ["livestock", "♧", "Livestock"], ["tasks", "☑", "Task"], ["journal", "▤", "Journal entry"], ["expenses", "↗", "Expense"], ["inventory", "▤", "Inventory item"], ["sales", "$", "Sale"], ["documents", "▧", "Document"]].map(([page, symbol, title]) => `<button data-quick="${page}" class="flex items-center gap-3 rounded-xl border border-slate-100 p-4 text-left transition hover:border-forest-200 hover:bg-forest-50">${icon(symbol, "text-forest-700")}<span class="text-sm font-medium">${title}</span></button>`).join("")}</div></div></div>`;
   root.querySelector("[data-close]").addEventListener("click", () => { root.innerHTML = ""; });
@@ -635,6 +672,7 @@ function openQuickAdd() {
 async function renderPage() {
   const content = document.querySelector("#content");
   try {
+    if (!allowedPages().includes(currentPage)) throw new Error("You do not have access to this page.");
     if (currentPage === "dashboard") await renderDashboard();
     else if (currentPage === "structure") await renderStructure();
     else if (currentPage === "inventory") await renderInventory();
@@ -644,12 +682,27 @@ async function renderPage() {
     else if (currentPage === "account") renderAccount();
     else if (currentPage === "crops") await renderCrops(location.hash.split("/")[1]);
     else if (currentPage === "team") await renderWorkspaceTeam();
+    else if (currentPage === "journal") await renderReports();
     else if (config[currentPage]) await renderResource(currentPage);
+    makeTablesResponsive();
   } catch (error) {
     content.innerHTML = `<div class="card mx-auto mt-10 max-w-lg p-8 text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-xl text-amber-700">!</div><h2 class="mt-4 font-semibold">We couldn't load this page</h2><p class="mt-2 text-sm text-slate-500">${escapeHtml(error.message)}</p><button id="retry" class="btn-secondary mt-5">Try again</button></div>`;
     document.querySelector("#retry").addEventListener("click", renderPage);
   }
 
+}
+
+function makeTablesResponsive() {
+  document.querySelectorAll("#content table, #modal-root table").forEach((table) => {
+    table.classList.add("responsive-table");
+    const headers = [...table.querySelectorAll("thead th")].map((header) => header.textContent.trim());
+    table.querySelectorAll("tbody tr").forEach((row) => {
+      [...row.cells].forEach((cell, index) => {
+        if (cell.colSpan === 1) cell.dataset.label = headers[index] || "Actions";
+      });
+    });
+    table.parentElement.classList.add("responsive-records");
+  });
 }
 
 function updateConnectivity() {
@@ -695,8 +748,8 @@ async function start() {
     const { data } = await api.get("/auth/me");
     currentUser = data;
     const requestedPage = location.hash.slice(1).split("/")[0];
-    currentPage = currentUser.role === "FOMS_ADMIN" ? "clients" : (navGroups.some((group) => group.items.some(([page]) => page === requestedPage)) ? requestedPage : "dashboard");
-    setOfflineIdentity({ organizationId: currentUser.organization.id, userId: currentUser.user.id });
+    currentPage = allowedPages().includes(requestedPage) ? requestedPage : allowedPages()[0];
+    setOfflineIdentity({ organizationId: currentUser.organization.id, userId: currentUser.user.id, role: currentUser.role });
     await renderApp();
   } catch (error) {
     if (error.message.includes("offline")) {
@@ -710,6 +763,7 @@ configureV03({
   escapeHtml, showToast, loadAll, navigate, getUser: () => currentUser, reload: renderPage,
   signedOut: () => { currentUser = null; mobileOpen = false; setOfflineIdentity(null); renderAuth(); }
 });
+configureReports({ escapeHtml, showToast, loadAll, getUser: () => currentUser });
 window.addEventListener("hashchange", async () => {
   if (location.hash.startsWith("#setup/")) {
     currentUser = null;
@@ -719,8 +773,11 @@ window.addEventListener("hashchange", async () => {
   }
   if (!currentUser) return;
   const page = location.hash.slice(1).split("/")[0];
-  const allowed = currentUser.role === "FOMS_ADMIN" ? ["clients", "account"] : navGroups.flatMap((group) => group.items.map(([key]) => key));
-  if (!allowed.includes(page)) return;
+  if (!allowedPages().includes(page)) {
+    showToast("You do not have access to this page.", "error");
+    history.replaceState(null, "", `#${currentPage}`);
+    return;
+  }
   currentPage = page;
   mobileOpen = false;
   await renderApp();

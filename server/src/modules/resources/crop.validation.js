@@ -16,19 +16,26 @@ export const cropSchema = z.object({
   cropName: z.string().trim().min(1).max(120), variety: text,
   status: z.enum(cropStages).optional(), acreage: number, expectedYield: number,
   requiresNursery: z.boolean().optional(), nurseryDays: z.number().int().min(1).max(730).nullable().optional(),
+  yieldingDays: z.number().int().min(1).max(3650).nullable().optional(),
   nurseryDate: date, plantingDate: date, transplantDate: date, expectedHarvest: date, notes: text
 }).strict();
 export const stageSchema = z.object({
   stage: z.enum(cropStages), occurredAt: z.coerce.date(), notes: z.string().trim().min(2).max(2000)
 }).strict();
 export const activitySchema = z.object({
-  type: z.enum(["IRRIGATION", "FERTILIZER", "HARVEST"]),
+  type: z.enum(["IRRIGATION", "FERTILIZER", "HARVEST", "CUSTOM"]),
+  customActivity: z.string().trim().min(2).max(120).nullable().optional(),
   occurredAt: z.coerce.date(), quantity: z.number().finite().positive(),
-  unit: z.enum(["litres", "m3", "mm", "kg", "g", "tonnes", "bags", "crates", "pieces"]),
+  unit: z.enum(["litres", "m3", "mm", "kg", "g", "tonnes", "bags", "crates", "pieces", "OTHER"]),
+  customUnit: z.string().trim().toLowerCase().min(1).max(40).nullable().optional(),
   product: text, notes: text
 }).strict().superRefine((value, context) => {
   const units = { IRRIGATION: ["litres", "m3", "mm"], FERTILIZER: ["kg", "g", "litres"], HARVEST: ["kg", "tonnes", "bags", "crates", "pieces"] };
-  if (!units[value.type].includes(value.unit)) context.addIssue({ code: "custom", path: ["unit"], message: "Choose a unit suitable for this activity" });
+  if (value.type !== "CUSTOM" && value.unit !== "OTHER" && !units[value.type].includes(value.unit)) context.addIssue({ code: "custom", path: ["unit"], message: "Choose a unit suitable for this activity" });
+  if (value.type === "CUSTOM" && !value.customActivity) context.addIssue({ code: "custom", path: ["customActivity"], message: "Specify the custom activity" });
+  if (value.type !== "CUSTOM" && value.customActivity) context.addIssue({ code: "custom", path: ["customActivity"], message: "Only custom activities accept a custom name" });
+  if (value.unit === "OTHER" && !value.customUnit) context.addIssue({ code: "custom", path: ["customUnit"], message: "Specify the unit" });
+  if (value.unit !== "OTHER" && value.customUnit) context.addIssue({ code: "custom", path: ["customUnit"], message: "Choose Other to specify a unit" });
   if (value.type === "FERTILIZER" && !value.product) context.addIssue({ code: "custom", path: ["product"], message: "Enter the fertilizer product" });
   if (value.occurredAt > new Date()) context.addIssue({ code: "custom", path: ["occurredAt"], message: "Activity date cannot be in the future" });
 });

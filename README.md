@@ -20,10 +20,16 @@ The interface uses a dark forest-green theme (`#173b27`) for desktop/mobile navi
 - Editable farms and blocks, farm-specific block filters, and complete paginated farm/block selectors.
 - Farm and block GPS coordinates, including negative coordinates and browser location capture (HTTPS or localhost required).
 - GPS values must be provided as a pair, within latitude -90 to 90 and longitude -180 to 180; editing supports clearing both.
-- Crop and journal forms select blocks belonging to the chosen farm. The API rejects cross-tenant and cross-farm references.
+- Crop forms select blocks belonging to the chosen farm. Daily reports select the associated crop or livestock; legacy journal block links are preserved. The API rejects cross-tenant and cross-farm references.
 - Blocks retain their original farm. Archives are blocked while active related records remain; archiving does not delete history.
 
-Run `npm test` for validation tests. To include database-backed API tests in a local container stack, set `FOMS_TEST_URL=http://app:3000` and run the tests in the Compose build-stage migration service after the app is healthy. Test workspaces are generated uniquely and removed afterward; never run these tests against production.
+Run `npm test` for validation tests. To include database-backed API tests in a local container stack, set `FOMS_TEST_URL=http://app:3000` and run the tests in the Compose build-stage migration service after the app is healthy. Share the app's upload volume so photo-test cleanup accesses the same files (replace `app_foms-uploads` if using a different local Compose project name):
+
+```sh
+docker compose run --rm --no-deps --volume app_foms-uploads:/app/uploads -e FOMS_TEST_URL=http://app:3000 migrate npm test
+```
+
+Test workspaces are generated uniquely and removed afterward; never run these tests against production.
 
 ## Local development
 
@@ -87,6 +93,12 @@ All application endpoints are under `/api/v1`. Authentication endpoints are `/au
 
 - Everyone uses the same username/password login. The platform-only `FOMS_ADMIN` role is not advertised on the login page and is never assignable through Team or client onboarding.
 - Only FOMS Admin creates a client workspace and its initial owner (`GET/POST /admin/clients`). Owners then set up farms, blocks and users. Platform sessions cannot access client farm APIs.
+- Version 0.3.1 adds client workspace / owner-profile editing and one-time owner password resets in Clients. Resetting revokes existing sessions and disables the previous password. The generated temporary password expires after 24 hours, can sign in once, and opens only the mandatory new-password screen. No farm API or refresh session is available until the password is changed; abandoning that screen requires a new admin reset. Neither the old nor the temporary password can be selected as the new password. Share the temporary password securely; it is returned once, stored only as a hash, and never included in audit details.
+- Crop cycles now have editable yielding days, measured from actual transplant if recorded, otherwise field planting / planned transplant. Crop-type maturity days initialize this value. Suggested transplant and harvest dates update while they remain automatically filled; manually entered dates are preserved and current suggestions remain visible. Clearing a date enables automatic suggestions again. Crops without yielding days can still use a manually selected harvest date.
+- Activities support Custom / specify and Other / specify units. Quantities remain positive and fertilizer products remain required. Harvest totals group by the actual unit label without conversions.
+- Daily reports replace the generic journal-entry form. The observation date/time defaults to now in the device's local timezone and is stored as a timestamp. Select general farm, crop or livestock, then a farm and associated record. Photos are optional with prominent camera/upload controls, private JPEG/PNG/WebP storage and a 10 MB limit. Report submissions require a live connection (including text-only submissions) and are not queued as successful uploads offline. Existing journal data remains readable, including historical block links.
+- Workers see only Dashboard, assigned Tasks, their own Daily reports and Account. The API enforces the same restrictions, with minimal farm/crop/livestock report selectors, own-report/photo access, and assigned-task status changes only. Owners, managers and agronomists can review workspace reports; Team is owner/manager only. Worker dashboards do not disclose workspace financials, inventory, crop details or other workers' tasks. Role-separated offline caches prevent previously cached manager lists from being shown after a role change.
+- On mobile, record tables become labeled stacked records, including tables rendered after actions or in dialogs. Desktop tables retain their columns.
 - Usernames are globally unique, case-insensitive, 3-80 characters, using letters, digits, dots, underscores and hyphens. The migration uses unique email prefixes where possible and a UUID suffix for collisions/short prefixes. Existing passwords remain valid; email is contact information, not a login identifier.
 - New/changed passwords require 8-72 characters, at least one letter, number and special character, and no more than 72 UTF-8 bytes. Account allows password changes after verifying the current password; all sessions are revoked.
 - Owner/manager user management covers all farms in their workspace. Managers cannot manage owners. The last owner cannot be demoted/removed, and users cannot remove their own access. Removing membership preserves historical records and clears task assignments. Editing access/profile revokes sessions. No cross-workspace member operations are permitted.

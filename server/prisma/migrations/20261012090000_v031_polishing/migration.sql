@@ -1,0 +1,14 @@
+ALTER TABLE "User" ADD COLUMN "mustChangePassword" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN "temporaryPasswordHash" TEXT;
+ALTER TABLE "User" ADD COLUMN "temporaryPasswordExpiresAt" TIMESTAMP(3);
+ALTER TABLE "CropCycle" ADD COLUMN "yieldingDays" INTEGER;
+ALTER TABLE "CropActivity" ADD COLUMN "customActivity" TEXT;
+ALTER TABLE "CropActivity" ADD COLUMN "customUnit" TEXT;
+ALTER TABLE "JournalEntry" ADD COLUMN "cropId" UUID;
+ALTER TABLE "JournalEntry" ADD COLUMN "livestockId" UUID;
+ALTER TABLE "JournalEntry" ADD COLUMN "subjectType" TEXT NOT NULL DEFAULT 'GENERAL';
+ALTER TABLE "JournalEntry" ADD COLUMN "photoStorageName" TEXT;
+ALTER TABLE "JournalEntry" ADD COLUMN "photoMimeType" TEXT;
+ALTER TABLE "JournalEntry" ADD COLUMN "photoOriginalName" TEXT;
+ALTER TABLE "JournalEntry" ADD CONSTRAINT "JournalEntry_cropId_fkey" FOREIGN KEY ("cropId") REFERENCES "CropCycle"("id") ON DELETE SET NULL;
+ALTER TABLE "JournalEntry" ADD CONSTRAINT "JournalEntry_livestockId_fkey" FOREIGN KEY ("livestockId") REFERENCES "Livestock"("id") ON DELETE SET NULL;

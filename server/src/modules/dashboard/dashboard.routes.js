@@ -5,6 +5,15 @@ const router = Router();
 router.get("/", async (req, res, next) => {
   try {
     const org = req.auth.organizationId;
+    if (req.auth.role === "WORKER") {
+      const where = { organizationId: org, deletedAt: null };
+      const [tasks, reportCount] = await Promise.all([
+        prisma.task.groupBy({ by: ["status"], where: { ...where, assignedTo: req.auth.userId }, _count: { id: true } }),
+        prisma.journalEntry.count({ where: { ...where, authorId: req.auth.userId } })
+      ]);
+      const counts = Object.fromEntries(tasks.map((item) => [item.status.toLowerCase(), item._count.id]));
+      return res.json({ success: true, data: { tasks: { pending: counts.pending || 0, inProgress: counts.in_progress || 0, completed: counts.completed || 0, approved: counts.approved || 0 }, reportCount } });
+    }
     const canSeeFinancials = ["OWNER", "MANAGER"].includes(req.auth.role);
     const farmWhere = { organizationId: org, deletedAt: null };
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);

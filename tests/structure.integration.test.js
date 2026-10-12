@@ -49,7 +49,7 @@ test("farm structure API: hierarchy, GPS, permissions, isolation and archive saf
     assert.equal((await request("/farms", "POST", { name: "Bad GPS", latitude: 91, longitude: 36 }, owner)).status, 400);
     assert.equal((await request("/farms", "POST", { name: "Half GPS", latitude: -1 }, owner)).status, 400);
     assert.equal((await request("/farms", "POST", { name: "Forbidden farm" }, worker)).status, 403);
-    assert.equal((await request("/farms", "GET", undefined, worker)).status, 200);
+    assert.equal((await request("/farms", "GET", undefined, worker)).status, 403);
     const blockResult = await request("/blocks", "POST", {
       farmId: farm.id, name: "Plot A", latitude: -1.3, longitude: 36.8, acreage: 3
     }, owner);

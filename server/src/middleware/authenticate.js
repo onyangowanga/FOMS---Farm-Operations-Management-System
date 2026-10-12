@@ -11,7 +11,9 @@ export async function authenticate(req, _res, next) {
     catch { throw new AppError(401, "Your session is invalid or expired"); }
     const user = await prisma.user.findUnique({ where: { id: claims.sub } });
     if (!user || user.deletedAt || (claims.sessionVersion ?? 0) !== user.sessionVersion) throw new AppError(401, "Your session is no longer valid");
-    req.auth = { userId: user.id, name: user.name, email: user.email, username: user.username, sessionVersion: user.sessionVersion };
+    if (user.mustChangePassword && claims.passwordChangeRequired !== true) throw new AppError(401, "Sign in with your temporary password to set a new password");
+    if (user.mustChangePassword && !(req.baseUrl === "/api/v1/auth" && ["/me", "/password"].includes(req.path))) throw new AppError(403, "Change your temporary password before accessing farm data");
+    req.auth = { userId: user.id, name: user.name, email: user.email, username: user.username, sessionVersion: user.sessionVersion, passwordChangeRequired: user.mustChangePassword };
     if (user.isPlatformAdmin && claims.organizationId === null) {
       Object.assign(req.auth, { role: "FOMS_ADMIN", organizationId: null, organizationName: "FOMS Administration" });
     } else {
