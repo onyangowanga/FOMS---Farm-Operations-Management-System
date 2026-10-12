@@ -28,11 +28,15 @@ test("workspace user management protects ownership, isolates tenants and revokes
     assert.equal((await request("/auth/me", "GET", undefined, worker)).body.data.user.name, "Updated staff");
     const task = await request("/tasks", "POST", { title: "Assigned task", assignedTo: created.body.data.id }, owner.cookie);
     assert.equal(task.status, 201);
+    assert.equal((await request(`/tasks/${task.body.data.id}/status`, "POST", { status: "IN_PROGRESS" }, owner.cookie)).status, 200);
     assert.equal((await request(`/team/${member.id}`, "DELETE", undefined, manager.cookie)).status, 200);
     assert.equal((await request("/auth/me", "GET", undefined, worker)).status, 401);
     assert.equal((await request("/auth/refresh", "POST", {}, worker)).status, 401);
     const tasks = await request("/tasks", "GET", undefined, owner.cookie);
     assert.equal(tasks.body.data.find((item) => item.id === task.body.data.id).assignedTo, null);
+    assert.equal(tasks.body.data.find((item) => item.id === task.body.data.id).status, "PENDING");
+    const history = (await request(`/tasks/${task.body.data.id}/events`, "GET", undefined, owner.cookie)).body.data;
+    assert.equal(history.find((event) => event.action === "REASSIGN").fromStatus, "IN_PROGRESS");
     assert.equal((await request(`/team/${ownerId}`, "DELETE", undefined, owner.cookie)).status, 409);
   } finally { await f.cleanup(); }
 });

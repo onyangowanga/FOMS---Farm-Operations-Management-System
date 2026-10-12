@@ -1,8 +1,10 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.4.0";
-import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.4.0";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.5.0";
+import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.5.0";
 import { offlineStore } from "./offline.js";
-import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.4.0";
-import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.4.0";
+import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.5.0";
+import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.5.0";
+import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.5.0";
+import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.5.0";
 
 const app = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast-root");
@@ -16,7 +18,7 @@ const config = {
   blocks: { title: "Farm blocks", singular: "block", endpoint: "blocks", roles: ["OWNER", "MANAGER"], fields: [["farmId", "Farm", "farm", true], ["name", "Block name", "text", true], ["acreage", "Area (acres)", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["currentUse", "Current use", "text"], ["soilType", "Soil type", "text"]], columns: [["name", "Block"], ["farmId", "Farm"], ["acreage", "Acres"], ["currentUse", "Current use"], ["soilType", "Soil type"]] },
   crops: { title: "Crop management", singular: "crop cycle", endpoint: "crops", roles: ["OWNER", "MANAGER", "AGRONOMIST"] },
   livestock: { title: "Livestock", singular: "livestock record", endpoint: "livestock", roles: ["OWNER", "MANAGER"] },
-  tasks: { title: "Tasks", singular: "task", endpoint: "tasks", roles: ["OWNER", "MANAGER"], fields: [["title", "Task title", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "text"], ["description", "Description", "textarea"], ["assignedTo", "Assign to", "team"], ["priority", "Priority", "select", false, ["LOW", "MEDIUM", "HIGH", "URGENT"]], ["dueDate", "Due date", "date"]], columns: [["title", "Task"], ["category", "Category"], ["priority", "Priority"], ["dueDate", "Due"], ["status", "Status"]] },
+  tasks: { title: "Tasks", singular: "task", endpoint: "tasks", roles: ["OWNER", "MANAGER"] },
   journal: { title: "Daily reports", singular: "daily report", endpoint: "journal", roles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"] },
   expenses: { title: "Expenses", singular: "expense", endpoint: "expenses", roles: ["OWNER", "MANAGER"], fields: [["description", "Description", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "select", true, ["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"]], ["amount", "Amount (KES)", "number", true], ["supplier", "Supplier", "text"], ["expenseDate", "Date", "date"], ["paymentMethod", "Payment method", "text"], ["notes", "Notes", "textarea"]], columns: [["description", "Expense"], ["category", "Category"], ["supplier", "Supplier"], ["amount", "Amount"], ["expenseDate", "Date"], ["approvedAt", "Approval"]] }
 };
@@ -153,13 +155,15 @@ function shell() {
       <main class="min-h-screen min-w-0 flex-1 lg:ml-64">
         <header class="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-slate-100 bg-white/95 px-4 backdrop-blur sm:px-7">
           <div class="flex items-center gap-3"><button id="open-mobile" class="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="Open menu">☰</button><p class="hidden text-sm text-slate-400 sm:block">${escapeHtml(currentUser.organization.name)} <span class="mx-1">/</span></p><span class="text-sm font-semibold text-slate-800">${visibleNavGroups.flatMap((group) => group.items).find(([page]) => page === currentPage)?.[2] || "Dashboard"}</span></div>
-          <div class="flex items-center gap-3"><span id="sync-indicator" class="hidden rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 sm:inline-flex"></span><span class="hidden text-xs text-slate-400 sm:inline">${new Intl.DateTimeFormat("en", { weekday: "short", month: "short", day: "numeric" }).format(new Date())}</span><div class="flex h-9 w-9 items-center justify-center rounded-full bg-forest-50 text-xs font-bold text-forest-700">${escapeHtml(initials)}</div></div>
+          <div class="flex items-center gap-3">${currentUser.role !== "FOMS_ADMIN" && !currentUser.passwordChangeRequired ? '<button id="open-notifications" class="rounded-lg px-2 py-1 text-xs font-semibold text-forest-700" aria-label="Open notifications">Inbox <span id="notification-count" class="ml-1 rounded-full bg-forest-50 px-2 py-1">0</span></button>' : ""}<span id="sync-indicator" class="hidden rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 sm:inline-flex"></span><span class="hidden text-xs text-slate-400 sm:inline">${new Intl.DateTimeFormat("en", { weekday: "short", month: "short", day: "numeric" }).format(new Date())}</span><div class="flex h-9 w-9 items-center justify-center rounded-full bg-forest-50 text-xs font-bold text-forest-700">${escapeHtml(initials)}</div></div>
         </header>
         <div id="content" class="mx-auto max-w-[1440px] p-4 sm:p-7"></div>
       </main>
       <div id="modal-root"></div>
+      <div id="inbox-root"></div>
     </div>`;
   tableObserver?.disconnect();
+  attachNotifications();
   tableObserver = new MutationObserver(makeTablesResponsive);
   for (const target of ["#content", "#modal-root"]) tableObserver.observe(document.querySelector(target), { childList: true, subtree: true });
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.page)));
@@ -579,6 +583,7 @@ async function startCreate(page) {
     openDocumentModal(categories);
   } else if (page === "crops") await openCropModal();
   else if (page === "livestock") await openLivestockModal();
+  else if (page === "tasks") await openTaskModal();
   else openRecordModal(page);
 }
 
@@ -596,6 +601,7 @@ function fieldMarkup([key, label, type, required = false, options = []], values 
 
 async function openRecordModal(page, values = {}) {
   if (page === "journal") return openDailyReport();
+  if (page === "tasks") return openTaskModal(values);
   try {
   const resource = config[page];
   const editing = Boolean(values.id);
@@ -684,10 +690,12 @@ async function renderPage() {
     else if (currentPage === "account") renderAccount();
     else if (currentPage === "crops") await renderCrops(location.hash.split("/")[1]);
     else if (currentPage === "livestock") await renderLivestock(location.hash.split("/")[1]);
+    else if (currentPage === "tasks") await renderTasks(location.hash.split("/")[1]);
     else if (currentPage === "team") await renderWorkspaceTeam();
     else if (currentPage === "journal") await renderReports();
     else if (config[currentPage]) await renderResource(currentPage);
     makeTablesResponsive();
+    await refreshNotifications();
   } catch (error) {
     content.innerHTML = `<div class="card mx-auto mt-10 max-w-lg p-8 text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-xl text-amber-700">!</div><h2 class="mt-4 font-semibold">We couldn't load this page</h2><p class="mt-2 text-sm text-slate-500">${escapeHtml(error.message)}</p><button id="retry" class="btn-secondary mt-5">Try again</button></div>`;
     document.querySelector("#retry").addEventListener("click", renderPage);
@@ -768,6 +776,8 @@ configureV03({
 });
 configureReports({ escapeHtml, showToast, loadAll, getUser: () => currentUser });
 configureLivestock({ escapeHtml, showToast, loadAll, navigate });
+configureTasks({ escapeHtml, showToast, loadAll, navigate, getUser: () => currentUser, reload: renderPage });
+configureNotifications({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage });
 window.addEventListener("hashchange", async () => {
   if (location.hash.startsWith("#setup/")) {
     currentUser = null;

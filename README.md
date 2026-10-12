@@ -43,6 +43,20 @@ Test workspaces are generated uniquely and removed afterward; never run these te
 - Livestock writes require a connection. Browser activity requests carry a reusable UUID so retrying the same save cannot deduct mortality twice.
 - API: `GET/POST /livestock`, `GET/PATCH/DELETE /livestock/:id`, `GET/POST /livestock/:id/events`. Lists support `page`/`limit`, and livestock lists also support `farmId`/`species`. Events accept `requestId` for safe retries. Event editing/deletion, acquisitions/transfers, breeding and automatic feed-stock integration are not part of this release.
 
+## Version 0.5 - Task workflow and in-app notifications
+
+- Mobile task lists and linked details support creation/editing, farm/assignee selection, due date/time, priority, status filtering and search. Owners/managers manage tasks; workers access only assigned tasks; agronomists retain read-only task access.
+- Tasks follow Pending -> In progress -> Completed -> Approved. Owners/managers approve completed tasks or request rework with a required explanation, returning them to In progress. Approved tasks are final. Profile edits and evidence changes lock on submission; reassignment of an editable task returns it to Pending.
+- Evidence is optional by default, with an evidence-required setting per task. Required tasks need at least one active uploaded file before submission; an external legacy URL does not satisfy this requirement.
+- Private evidence supports verified JPEG, PNG, WebP and PDF, maximum 10 MB per file and 10 active files per task. Workers can remove only their own files before submission; owners/managers can remove active files on editable tasks. Removal/archive retains stored files and workflow history, but archived/removed evidence is inaccessible.
+- Workflow history records creation, profile edits/reassignment, start, evidence changes, submission, approval and rework. Existing task statuses, completion dates and external evidence links are retained without fabricated history.
+- Removing a workspace member unassigns their active tasks and records the change in each task's history. Editable tasks return to Pending; submitted/approved statuses and archived historical assignments are preserved.
+- A header Inbox provides personal notifications for assignment, submission to workspace owners/managers, approval and rework. It supports unread counts, mark-read/mark-all-read and links to task details. Recipients see only notifications for currently accessible active tasks; reassignment removes the former worker's inbox access to that task. Counts refresh on page rendering and every minute while connected.
+- Task/evidence/notification writes require a connection and are not added to the offline queue. Status retries at the same current status do not create duplicate workflow events or notifications.
+- API: `GET/POST /tasks`, `GET/PATCH/DELETE /tasks/:id`, `POST /tasks/:id/status`, `GET /tasks/:id/events`, `GET/POST /tasks/:id/evidence`, `GET /tasks/:id/evidence/:evidenceId/download`, `DELETE /tasks/:id/evidence/:evidenceId`, and `GET /notifications`, `PATCH /notifications/:id` with `{ "read": true }`, `POST /notifications/read-all`. Task list filters: `status`, `farmId`, `assignedTo`, `page`, `limit`.
+- No email/SMS/WhatsApp delivery, automated reminders, recurring tasks or background scheduler in this release. The per-user database inbox is the notifications foundation.
+- The canonical `npm test` runner executes test files sequentially to avoid oversubscribing local Docker resources and expiring Prisma's existing five-second transaction budget. Assertions and production transaction timeouts are unchanged.
+
 ## Local development
 
 Requirements: Node.js 20+, npm, and PostgreSQL 14+.

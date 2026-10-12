@@ -15,6 +15,8 @@ import documentsRoutes from "./modules/documents/documents.routes.js";
 import cropRoutes from "./modules/resources/crop.routes.js";
 import journalRoutes from "./modules/resources/journal.routes.js";
 import livestockRoutes from "./modules/resources/livestock.routes.js";
+import taskRoutes from "./modules/tasks/task.routes.js";
+import notificationRoutes from "./modules/tasks/notification.routes.js";
 import { createResourceRouter } from "./modules/resources/resource.routes.js";
 import { createStructureRouter, organizationRouter } from "./modules/resources/structure.routes.js";
 import { authenticate } from "./middleware/authenticate.js";
@@ -44,7 +46,7 @@ app.use("/api/v1", authenticate);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1", (req, _res, next) => {
   if (!req.auth.organizationId) return next(new AppError(403, "FOMS Admin access is separate from client workspaces"));
-  if (req.auth.role === "WORKER" && !["dashboard", "tasks", "journal"].includes(req.path.split("/")[1])) return next(new AppError(403, "Workers can access assigned tasks and their daily reports only"));
+  if (req.auth.role === "WORKER" && !["dashboard", "tasks", "journal", "notifications"].includes(req.path.split("/")[1])) return next(new AppError(403, "Workers can access assigned tasks, their daily reports and personal notifications only"));
   next();
 });
 app.use("/api/v1/dashboard", dashboardRoutes);
@@ -58,7 +60,9 @@ app.use("/api/v1/blocks", createStructureRouter("blocks"));
 app.use("/api/v1/crops", cropRoutes);
 app.use("/api/v1/journal", journalRoutes);
 app.use("/api/v1/livestock", livestockRoutes);
-for (const [path, name] of Object.entries({ tasks: "tasks", expenses: "expenses" })) {
+app.use("/api/v1/tasks", taskRoutes);
+app.use("/api/v1/notifications", notificationRoutes);
+for (const [path, name] of Object.entries({ expenses: "expenses" })) {
   app.use(`/api/v1/${path}`, createResourceRouter(name));
 }
 app.use("/api/v1", (_req, res) => res.status(404).json({ success: false, message: "API endpoint was not found" }));

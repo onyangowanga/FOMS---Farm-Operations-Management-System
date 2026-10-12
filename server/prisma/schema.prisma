@@ -79,6 +79,7 @@ model Organization {
   payments    Payment[]
   audits      AuditLog[]
   cropTypes   CropType[]
+  notifications Notification[]
 }
 
 model User {
@@ -113,6 +114,7 @@ model User {
   receivedPayments Payment[] @relation("PaymentRecorder")
   uploadedDocuments Document[] @relation("DocumentUploader")
   auditEntries   AuditLog[]
+  notifications Notification[]
 }
 
 model Membership {
@@ -346,6 +348,10 @@ model Task {
   createdBy      String?      @db.Uuid
   evidenceUrl    String?
   completedAt    DateTime?
+  evidenceRequired Boolean    @default(false)
+  submissionNotes String?
+  approvedAt     DateTime?
+  approvedBy     String?      @db.Uuid
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
@@ -353,8 +359,55 @@ model Task {
   farm           Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
   assignee       User?        @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
   creator        User?        @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  evidence       TaskEvidence[]
+  events         TaskEvent[]
+  notifications Notification[]
 
   @@index([organizationId, status, dueDate, deletedAt])
+}
+
+model TaskEvidence {
+  id             String   @id @default(uuid()) @db.Uuid
+  taskId         String   @db.Uuid
+  storageName    String
+  mimeType       String
+  originalName   String
+  uploadedBy     String   @db.Uuid
+  createdAt      DateTime @default(now())
+  deletedAt      DateTime?
+  task           Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, deletedAt, createdAt])
+}
+
+model TaskEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  taskId         String   @db.Uuid
+  action         String
+  fromStatus     TaskStatus?
+  toStatus       TaskStatus?
+  notes          String?
+  recordedBy     String   @db.Uuid
+  createdAt      DateTime @default(now())
+  task           Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt, id])
+}
+
+model Notification {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  userId         String       @db.Uuid
+  taskId         String       @db.Uuid
+  type           String
+  message        String
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, readAt, createdAt])
 }
 
 model JournalEntry {

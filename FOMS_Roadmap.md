@@ -88,6 +88,8 @@ Implemented in Version 0.4: individual or batch tracking for goats, sheep and po
 - Approvals
 - Notifications foundation
 
+Implemented in Version 0.5: linked mobile task lists/details, editable assignment/priority/due dates, private photo/PDF evidence with per-task requirement, explicit start/submit/approve and explained rework workflow, preserved history and recipient-scoped in-app notifications with unread/read controls. Workers retain assigned-task-only access. No external notification delivery or recurring-task scheduler.
+
 ## Version 0.6 - Farm Journal
 
 - Daily operational logs

@@ -9,12 +9,10 @@ const nullableText = z.string().trim().max(2000).nullable().optional();
 const nullableDate = z.coerce.date().nullable().optional();
 const uuid = z.uuid();
 const schemas = {
-  tasks: z.object({ farmId: uuid.nullable().optional(), title: z.string().trim().min(2).max(160), description: nullableText, category: nullableText, status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "APPROVED"]).optional(), priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(), dueDate: nullableDate, assignedTo: uuid.nullable().optional(), evidenceUrl: z.string().url().nullable().optional() }),
   expenses: z.object({ farmId: uuid.nullable().optional(), description: z.string().trim().min(2).max(200), category: z.enum(["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"]), supplier: nullableText, amount: z.coerce.number().positive(), currency: z.string().trim().length(3).toUpperCase().optional(), paymentMethod: nullableText, expenseDate: nullableDate, notes: nullableText })
 };
 
 const config = {
-  tasks: { delegate: "task", entity: "Task", creator: "createdBy", roles: ["OWNER", "MANAGER"], readRoles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"] },
   expenses: { delegate: "expense", entity: "Expense", creator: "createdBy", roles: ["OWNER", "MANAGER"], readRoles: ["OWNER", "MANAGER"] }
 };
 
@@ -48,7 +46,6 @@ export function createResourceRouter(path) {
       const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
       const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
       const where = { organizationId: req.auth.organizationId, deletedAt: null };
-      if (resource.entity === "Task" && req.auth.role === "WORKER") where.assignedTo = req.auth.userId;
       const [items, total] = await Promise.all([
         resource.db.findMany({
           where,
@@ -96,35 +93,21 @@ export function createResourceRouter(path) {
 
   router.patch("/:id", async (req, res, next) => {
     try {
-      if (!resource.roles.includes(req.auth.role) && !(resource.entity === "Task" && req.auth.role === "WORKER")) {
+      if (!resource.roles.includes(req.auth.role)) {
         throw new AppError(403, "You do not have permission to perform this action");
       }
       const id = uuid.parse(req.params.id);
       const payload = resource.schema.partial().parse(req.body);
       if (Object.keys(payload).length === 0) throw new AppError(400, "Provide at least one field to update");
-      if (resource.entity === "Task" && req.auth.role === "WORKER") {
-        const allowed = new Set(["status", "evidenceUrl"]);
-        if (Object.keys(payload).some((key) => !allowed.has(key)) || !["IN_PROGRESS", "COMPLETED"].includes(payload.status)) {
-          throw new AppError(403, "Workers can only update the status of assigned tasks");
-        }
-      }
       const where = { id, organizationId: req.auth.organizationId, deletedAt: null };
-      if (resource.entity === "Task" && req.auth.role === "WORKER") {
-        where.assignedTo = req.auth.userId;
-        where.status = { in: ["PENDING", "IN_PROGRESS"] };
-      }
       const updated = await prisma.$transaction(async (tx) => {
         await lockOrganization(tx, req.auth.organizationId);
         const existing = await tx[resource.delegate].findFirst({ where });
         if (!existing) throw new AppError(404, `${resource.entity} was not found`);
         await assertRelatedTenant(req.auth.organizationId, { ...existing, ...payload }, tx);
-        const updateData = {
-          ...payload,
-          ...(resource.entity === "Task" && payload.status === "COMPLETED" ? { completedAt: new Date() } : {})
-        };
         const result = await tx[resource.delegate].updateMany({
           where,
-          data: updateData
+          data: payload
         });
         if (result.count === 0) throw new AppError(404, `${resource.entity} was not found`);
         const record = await tx[resource.delegate].findFirst({ where: { id, organizationId: req.auth.organizationId } });

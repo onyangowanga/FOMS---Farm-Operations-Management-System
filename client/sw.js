@@ -1,5 +1,5 @@
-const CACHE_NAME = "foms-shell-v0.4.0";
-const APP_SHELL = ["/", "/styles.css?v=0.4.0", "/js/app.js?v=0.4.0", "/js/api.js?v=0.4.0", "/js/v03.js?v=0.4.0", "/js/reports.js?v=0.4.0", "/js/livestock.js?v=0.4.0", "/js/crop-schedule.js?v=0.4.0", "/js/offline.js", "/favicon/favicon.ico", "/favicon/site.webmanifest"];
+const CACHE_NAME = "foms-shell-v0.5.0";
+const APP_SHELL = ["/", "/styles.css?v=0.5.0", "/js/app.js?v=0.5.0", "/js/api.js?v=0.5.0", "/js/v03.js?v=0.5.0", "/js/reports.js?v=0.5.0", "/js/livestock.js?v=0.5.0", "/js/tasks.js?v=0.5.0", "/js/notifications.js?v=0.5.0", "/js/crop-schedule.js?v=0.5.0", "/js/offline.js", "/favicon/favicon.ico", "/favicon/site.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));

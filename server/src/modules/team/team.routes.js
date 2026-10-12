@@ -83,7 +83,15 @@ router.delete("/:id", authorize("OWNER", "MANAGER"), async (req, res, next) => {
       await tx.membership.delete({ where: { id } });
       await tx.refreshToken.deleteMany({ where: { userId: target.userId, organizationId: req.auth.organizationId } });
       await tx.user.update({ where: { id: target.userId }, data: { sessionVersion: { increment: 1 } } });
-      await tx.task.updateMany({ where: { organizationId: req.auth.organizationId, assignedTo: target.userId }, data: { assignedTo: null } });
+      const tasks = await tx.task.findMany({ where: { organizationId: req.auth.organizationId, assignedTo: target.userId, deletedAt: null }, select: { id: true, status: true } });
+      await tx.task.updateMany({ where: { id: { in: tasks.map((task) => task.id) } }, data: { assignedTo: null } });
+      const editableTasks = tasks.filter((task) => ["PENDING", "IN_PROGRESS"].includes(task.status));
+      await tx.task.updateMany({ where: { id: { in: editableTasks.map((task) => task.id) } }, data: { status: "PENDING" } });
+      if (tasks.length) await tx.taskEvent.createMany({ data: tasks.map((task) => ({
+        taskId: task.id, action: "REASSIGN", fromStatus: task.status,
+        toStatus: ["PENDING", "IN_PROGRESS"].includes(task.status) ? "PENDING" : task.status,
+        notes: "Assignee removed from the workspace; task is now unassigned.", recordedBy: req.auth.userId
+      })) });
       await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "REMOVE", entity: "Membership", entityId: id }, tx);
     });
     res.json({ success: true, message: "User removed from this workspace. Historical records are preserved." });
