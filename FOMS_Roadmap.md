@@ -129,6 +129,8 @@ Implemented in Version 0.8: mobile expense/invoice details, pending expense edit
 - PDF exports
 - Excel exports
 
+Implemented in Version 0.9: separate operations/financial report pages with daily, Monday-Sunday weekly and calendar-month filters in Africa/Nairobi; farm scopes; owner/manager previews and genuine PDF/XLSX exports; crop-only agronomist reports. Operations combine period records and explicitly labelled current status snapshots; financial reports preserve V0.8 approved-only profit, pending expenses and separate currencies. Mobile paged record cards, private online-only downloads, explicit size limits without truncation, numeric Excel cells and literal-safe user text. No historical closing-state reconstruction, scheduled email delivery or advanced analytics.
+
 ## Version 1.0 - Production Release
 
 - User Acceptance Testing

@@ -7,10 +7,10 @@ export function setOfflineIdentity(identity) {
   offlineCacheScope = identity ? `${offlineIdentity}:${identity.role}` : "anonymous";
 }
 
-async function apiRequest(path, options = {}) {
+async function apiRequest(path, options = {}, download = false) {
   const method = options.method || "GET";
   if (!navigator.onLine && method === "GET") {
-    if (/^\/(auth|admin|team|notifications|finance|expenses|sales)(\/|\?|$)/.test(path)) throw new Error("Reconnect to verify your sign-in, financial records, accounts and notifications.");
+    if (/^\/(auth|admin|team|notifications|finance|expenses|sales|reporting)(\/|\?|$)/.test(path)) throw new Error("Reconnect to verify your sign-in, reports, financial records, accounts and notifications.");
     const cached = await offlineStore.get(`${offlineCacheScope}:${path}`);
     if (cached !== undefined) return cached;
     throw new Error("You are offline and this information has not been saved on this device yet.");
@@ -35,16 +35,16 @@ async function apiRequest(path, options = {}) {
   }
   if (response.status === 401 && !path.startsWith("/auth/")) {
     const refreshed = await fetch("/api/v1/auth/refresh", { method: "POST", credentials: "same-origin" });
-    if (refreshed.ok) return apiRequest(path, options);
+    if (refreshed.ok) return apiRequest(path, options, download);
   }
-  const body = await response.json();
+  const body = response.ok && download ? await response.blob() : await response.json();
   if (!response.ok) {
     const validation = Array.isArray(body.errors)
       ? body.errors.map((issue) => `${issue.field ? `${issue.field}: ` : ""}${issue.message}`).join("; ")
       : "";
     throw new Error(validation || body.message || "The request could not be completed");
   }
-  if (method === "GET" && !/^\/(auth|admin|team|notifications|finance|expenses|sales)(\/|\?|$)/.test(path)) await offlineStore.put(`${offlineCacheScope}:${path}`, body);
+  if (method === "GET" && !download && !/^\/(auth|admin|team|notifications|finance|expenses|sales|reporting)(\/|\?|$)/.test(path)) await offlineStore.put(`${offlineCacheScope}:${path}`, body);
   return body;
 }
 
@@ -73,6 +73,7 @@ export async function syncOutbox(identity) {
 
 export const api = {
   get: (path) => apiRequest(path),
+  download: (path) => apiRequest(path, {}, true),
   post: (path, body) => apiRequest(path, { method: "POST", body: JSON.stringify(body) }),
   upload: (path, body) => apiRequest(path, { method: "POST", body, queueOffline: false }),
   patch: (path, body) => apiRequest(path, { method: "PATCH", body: JSON.stringify(body) }),

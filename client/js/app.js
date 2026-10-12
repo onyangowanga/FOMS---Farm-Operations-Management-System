@@ -1,18 +1,20 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.8.0";
-import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.8.0";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.9.0";
+import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.9.0";
 import { offlineStore } from "./offline.js";
-import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.8.0";
-import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.8.0";
-import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.8.0";
-import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.8.0";
-import { configureInventory, renderInventory as renderStockInventory, openInventoryModal as openStockItemModal } from "./inventory.js?v=0.8.0";
-import { configureFinance, renderFinance, renderExpenses, renderSales as renderFinanceSales, openSaleModal as openFinanceSaleModal, openExpenseModal } from "./finance.js?v=0.8.0";
+import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.9.0";
+import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.9.0";
+import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.9.0";
+import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.9.0";
+import { configureInventory, renderInventory as renderStockInventory, openInventoryModal as openStockItemModal } from "./inventory.js?v=0.9.0";
+import { configureFinance, renderFinance, renderExpenses, renderSales as renderFinanceSales, openSaleModal as openFinanceSaleModal, openExpenseModal } from "./finance.js?v=0.9.0";
+import { configureReporting, renderReporting } from "./reporting.js?v=0.9.0";
 
 const app = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast-root");
 const navGroups = [
   { title: "OVERVIEW", items: [["dashboard", "◫", "Dashboard"], ["structure", "▦", "Farm structure"]] },
   { title: "FARM OPERATIONS", items: [["farms", "⌂", "Farms"], ["blocks", "▦", "Blocks"], ["crops", "❋", "Crops"], ["livestock", "♧", "Livestock"], ["tasks", "☑", "Tasks"], ["journal", "▤", "Daily reports"]] },
+  { title: "REPORTING", items: [["operations-reports", "▤", "Operations reports"], ["financial-reports", "$", "Financial reports"]] },
   { title: "MANAGEMENT", items: [["inventory", "▤", "Inventory"], ["finance", "$", "Finance"], ["sales", "$", "Sales & invoices"], ["expenses", "↗", "Expenses"], ["documents", "▧", "Documents"], ["team", "♙", "Team"], ["account", "⚙", "Account"]] }
 ];
 const config = {
@@ -39,7 +41,7 @@ function allowedPages() {
   if (currentUser.role === "FOMS_ADMIN") return ["clients", "account"];
   if (currentUser.role === "WORKER") return ["dashboard", "tasks", "journal", "account"];
   return navGroups.flatMap((group) => group.items.map(([page]) => page)).filter((page) =>
-    (!["expenses", "sales", "finance", "team"].includes(page) || ["OWNER", "MANAGER"].includes(currentUser.role)) &&
+    (!["expenses", "sales", "finance", "financial-reports", "team"].includes(page) || ["OWNER", "MANAGER"].includes(currentUser.role)) &&
     (page !== "livestock" || currentUser.role !== "AGRONOMIST"));
 }
 
@@ -558,6 +560,8 @@ async function renderPage() {
     else if (currentPage === "structure") await renderStructure();
     else if (currentPage === "inventory") await renderStockInventory(location.hash.split("/")[1]);
     else if (currentPage === "finance") await renderFinance();
+    else if (currentPage === "operations-reports") await renderReporting("operations");
+    else if (currentPage === "financial-reports") await renderReporting("financial");
     else if (currentPage === "expenses") await renderExpenses(location.hash.split("/")[1]);
     else if (currentPage === "sales") await renderFinanceSales(location.hash.split("/")[1]);
     else if (currentPage === "documents") await renderDocuments();
@@ -658,6 +662,7 @@ configureTasks({ escapeHtml, showToast, loadAll, navigate, getUser: () => curren
 configureNotifications({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage });
 configureInventory({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage });
 configureFinance({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage, outboxChanged: setupConnectivity });
+configureReporting({ escapeHtml, showToast, loadAll, getUser: () => currentUser });
 window.addEventListener("hashchange", async () => {
   if (location.hash.startsWith("#setup/")) {
     currentUser = null;
