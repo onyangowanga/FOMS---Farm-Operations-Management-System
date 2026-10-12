@@ -1,4 +1,4 @@
-import { api } from "./api.js?v=0.5.0";
+import { api } from "./api.js?v=0.6.0";
 
 let context;
 let timer;

@@ -98,6 +98,8 @@ Implemented in Version 0.5: linked mobile task lists/details, editable assignmen
 - Weather observations
 - Photo documentation
 
+Implemented in Version 0.6: filtered mobile journal cards/details/editing; operational, field, weather and recommendation reports; simple worker crop/livestock/general reporting with private optional photos; staff-assessed incident severity; append-only dated Open/Resolved follow-ups with safe retries and backdated-state protection. Existing reports/photos and worker own-report restrictions are retained. No external weather integration or automatic journal-to-finance transactions.
+
 ## Version 0.7 - Inventory
 
 - Seeds

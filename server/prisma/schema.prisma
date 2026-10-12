@@ -28,6 +28,17 @@ enum Priority {
   URGENT
 }
 
+enum JournalIncidentStatus {
+  OPEN
+  RESOLVED
+}
+
+enum JournalIncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 enum InventoryCategory {
   SEED
   FERTILIZER
@@ -106,6 +117,7 @@ model User {
   assignedTasks  Task[]       @relation("TaskAssignee")
   createdTasks   Task[]       @relation("TaskCreator")
   journalEntries JournalEntry[] @relation("JournalAuthor")
+  journalFollowUps JournalFollowUp[]
   createdExpenses Expense[]   @relation("ExpenseCreator")
   createdInventoryItems InventoryItem[] @relation("InventoryItemCreator")
   createdStockMovements StockMovement[] @relation("StockMovementCreator")
@@ -420,6 +432,9 @@ model JournalEntry {
   body           String
   weather        String?
   incident       String?
+  incidentStatus JournalIncidentStatus?
+  incidentSeverity JournalIncidentSeverity?
+  incidentUpdatedAt DateTime?
   cost           Float        @default(0)
   photoUrl       String?
   cropId         String?      @db.Uuid
@@ -439,8 +454,27 @@ model JournalEntry {
   author         User?        @relation("JournalAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   crop           CropCycle?   @relation(fields: [cropId], references: [id], onDelete: SetNull)
   livestock      Livestock?   @relation(fields: [livestockId], references: [id], onDelete: SetNull)
+  followUps      JournalFollowUp[]
 
   @@index([organizationId, observedAt, deletedAt])
+}
+
+model JournalFollowUp {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  journalEntryId String @db.Uuid
+  requestId      String @db.Uuid
+  notes          String
+  observedAt     DateTime
+  incidentStatus JournalIncidentStatus
+  incidentSeverity JournalIncidentSeverity?
+  recordedBy     String? @db.Uuid
+  createdAt      DateTime @default(now())
+  journal        JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  author         User? @relation(fields: [recordedBy], references: [id], onDelete: SetNull)
+
+  @@unique([journalEntryId, requestId])
+  @@index([organizationId, journalEntryId, observedAt])
 }
 
 model Expense {

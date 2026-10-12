@@ -45,6 +45,11 @@ test("daily reports persist crop/livestock associations, timestamps and private 
     assert.equal(cropReport.body.data.observedAt, "2026-01-01T06:30:00.000Z");
     assert.equal(cropReport.body.data.crop.cropName, "Onions");
     assert.ok(!Object.hasOwn(cropReport.body.data, "photoStorageName"));
+    const detail = await request(`/journal/${cropReport.body.data.id}`, "GET", undefined, worker.cookie);
+    assert.equal(detail.status, 200);
+    assert.equal(detail.body.data.crop.id, crop.id);
+    assert.equal(detail.body.data.photoPath, cropReport.body.data.photoPath);
+    assert.equal((await request(`/journal?cropId=${crop.id}`, "GET", undefined, owner.cookie)).body.meta.total, 1);
     const photoUrl = `${base}${cropReport.body.data.photoPath}`;
     for (const [cookie, status] of [["", 401], [worker.cookie, 200], [owner.cookie, 200], [coworker.cookie, 404], [outsider.cookie, 404]]) {
       const response = await fetch(photoUrl, { headers: { Cookie: cookie } });
@@ -67,6 +72,7 @@ test("daily reports persist crop/livestock associations, timestamps and private 
     assert.equal(update.status, 200);
     assert.equal(update.body.data.subjectType, "CROP");
     assert.equal(update.body.data.observedAt, "2026-01-01T06:30:00.000Z");
+    assert.equal(update.body.data.photoPath, cropReport.body.data.photoPath);
     assert.equal((await request("/journal", "GET", undefined, worker.cookie)).body.data.find((item) => item.id === cropReport.body.data.id).body, "Updated crop observation");
     assert.equal((await request(path, "DELETE", undefined, outsider.cookie)).status, 404);
     assert.equal((await request(path, "DELETE", undefined, worker.cookie)).status, 200);

@@ -4,6 +4,8 @@ Farm Operations Management System — a mobile-first farm operations workspace.
 
 The interface uses a dark forest-green theme (`#173b27`) for desktop/mobile navigation and PWA browser chrome, with high-contrast navigation labels and a light main workspace.
 
+Updated browser/Apple/PWA icons are copied from the supplied favicon assets. Versioned PNG/ICO references prevent stale icons, and the app manifest retains the FOMS identity, start URL and forest-green theme. The unchanged legacy SVG is not selected over the newly supplied raster icons.
+
 ## Included in this foundation release
 
 - Username sign-in with short-lived access JWTs, rotating refresh tokens, bcrypt password hashing, and HttpOnly cookies. Public registration is disabled.
@@ -56,6 +58,16 @@ Test workspaces are generated uniquely and removed afterward; never run these te
 - API: `GET/POST /tasks`, `GET/PATCH/DELETE /tasks/:id`, `POST /tasks/:id/status`, `GET /tasks/:id/events`, `GET/POST /tasks/:id/evidence`, `GET /tasks/:id/evidence/:evidenceId/download`, `DELETE /tasks/:id/evidence/:evidenceId`, and `GET /notifications`, `PATCH /notifications/:id` with `{ "read": true }`, `POST /notifications/read-all`. Task list filters: `status`, `farmId`, `assignedTo`, `page`, `limit`.
 - No email/SMS/WhatsApp delivery, automated reminders, recurring tasks or background scheduler in this release. The per-user database inbox is the notifications foundation.
 - The canonical `npm test` runner executes test files sequentially to avoid oversubscribing local Docker resources and expiring Prisma's existing five-second transaction budget. Assertions and production transaction timeouts are unchanged.
+
+## Version 0.6 - Farm journal and incident follow-ups
+
+- Daily operational logs, field observations, work performed, weather, recommendations and pest/disease reports share the existing crop/livestock/general reporting form. Dates default to the current local date/time; private optional photos and existing associations are retained.
+- Mobile journal cards link to full details and editing. Filter by farm, subject, report type, incident status, search and inclusive local date range. Workers see/edit/archive only their own reports and retain their simple reporting interface.
+- Owners, managers and agronomists assess Low/Medium/High severity and add dated, append-only Open/Resolved incident follow-ups. Recurrences can reopen incidents with an explanatory note. Workers can report incidents and read follow-ups on their own reports, but cannot assess severity or change incident status.
+- Follow-ups have reusable request UUIDs; retrying the same save does not duplicate history. Backdated notes are retained without overwriting a newer incident status/severity. Original observation time/subject lock once follow-ups exist; severity changes then use follow-ups. Tracked incidents cannot be converted into ordinary notes.
+- Existing incident-category reports or notes containing incident text initialize as Open with unassessed severity, without fabricated follow-ups. Ordinary reports and stored photos remain unchanged. Archives preserve history while removing active access.
+- Incident follow-ups and photo submissions require a connection and never enter the offline queue; existing ordinary journal edit/archive offline support remains. Recorded journal costs are observations only and do not automatically create finance records.
+- API: `GET /journal/:id` includes follow-up history; `POST /journal/:id/follow-ups` accepts `requestId`, `notes`, `observedAt`, `incidentStatus` and optional `incidentSeverity`. Existing journal CRUD/photo endpoints remain. List filters: `farmId`, `cropId`, `livestockId`, `subjectType`, `category`, `incidentStatus`, `search`, ISO date/time `from`/`to`, `page`/`limit`.
 
 ## Local development
 

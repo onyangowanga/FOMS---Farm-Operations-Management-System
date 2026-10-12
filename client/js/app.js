@@ -1,10 +1,10 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.5.0";
-import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.5.0";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.6.0";
+import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.6.0";
 import { offlineStore } from "./offline.js";
-import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.5.0";
-import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.5.0";
-import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.5.0";
-import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.5.0";
+import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.6.0";
+import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.6.0";
+import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.6.0";
+import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.6.0";
 
 const app = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast-root");
@@ -215,8 +215,8 @@ async function renderDashboard() {
   const content = document.querySelector("#content");
   if (currentUser.role === "WORKER") {
     content.innerHTML = `<div class="mb-6 flex flex-wrap justify-between gap-3"><div><h1 class="text-2xl font-semibold">Your work today</h1><p class="mt-2 text-sm text-slate-500">Assigned tasks and your daily farm observations.</p></div><button id="worker-quick-add" class="btn-primary">Quick add daily report</button></div><div class="grid grid-cols-2 gap-3">${metric("Pending tasks", data.tasks.pending, "Assigned to you", "", undefined, "tasks")}${metric("In progress", data.tasks.inProgress, "Assigned to you", "", undefined, "tasks")}${metric("Completed tasks", data.tasks.completed + data.tasks.approved, "Submitted / approved", "", undefined, "tasks")}${metric("Daily reports", data.reportCount, "Your recorded observations", "", undefined, "journal")}</div><section class="card mt-5"><h2 class="font-semibold">Record today's observations</h2><p class="mt-2 text-sm text-slate-500">Choose a crop, livestock or general farm observation, add a date and time, and optionally take or upload a photo.</p><button id="worker-report" class="btn-primary mt-4">Add daily report</button></section>`;
-    content.querySelector("#worker-quick-add").onclick = openDailyReport;
-    content.querySelector("#worker-report").onclick = openDailyReport;
+    content.querySelector("#worker-quick-add").onclick = () => openDailyReport();
+    content.querySelector("#worker-report").onclick = () => openDailyReport();
     return;
   }
   const totalAnimals = Object.values(data.livestock).reduce((sum, count) => sum + count, 0);
@@ -692,7 +692,7 @@ async function renderPage() {
     else if (currentPage === "livestock") await renderLivestock(location.hash.split("/")[1]);
     else if (currentPage === "tasks") await renderTasks(location.hash.split("/")[1]);
     else if (currentPage === "team") await renderWorkspaceTeam();
-    else if (currentPage === "journal") await renderReports();
+    else if (currentPage === "journal") await renderReports(location.hash.split("/")[1]);
     else if (config[currentPage]) await renderResource(currentPage);
     makeTablesResponsive();
     await refreshNotifications();
