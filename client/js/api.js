@@ -8,7 +8,7 @@ export function setOfflineIdentity(identity) {
 async function apiRequest(path, options = {}) {
   const method = options.method || "GET";
   if (!navigator.onLine && method === "GET") {
-    if (path.startsWith("/auth/")) throw new Error("Reconnect to verify your sign-in before continuing.");
+    if (/^\/(auth|admin|team)(\/|$)/.test(path)) throw new Error("Reconnect to verify your sign-in and manage accounts.");
     const cached = await offlineStore.get(`${offlineIdentity}:${path}`);
     if (cached !== undefined) return cached;
     throw new Error("You are offline and this information has not been saved on this device yet.");
@@ -25,7 +25,7 @@ async function apiRequest(path, options = {}) {
     });
   } catch (error) {
     if (method !== "GET" && !path.startsWith("/auth/")) {
-      if (options.queueOffline === false) throw new Error("You are offline. Reconnect before uploading a file.");
+      if (options.queueOffline === false || /^\/(admin|team)(\/|$)/.test(path)) throw new Error("You are offline. Reconnect before managing accounts or uploading files.");
       await offlineStore.enqueue({ path, method, body: options.body, identity: offlineIdentity });
       return { success: true, queued: true, message: "Saved on this device. It will sync when you are back online." };
     }
@@ -42,7 +42,7 @@ async function apiRequest(path, options = {}) {
       : "";
     throw new Error(validation || body.message || "The request could not be completed");
   }
-  if (method === "GET" && !path.startsWith("/auth/")) await offlineStore.put(`${offlineIdentity}:${path}`, body);
+  if (method === "GET" && !/^\/(auth|admin|team)(\/|$)/.test(path)) await offlineStore.put(`${offlineIdentity}:${path}`, body);
   return body;
 }
 

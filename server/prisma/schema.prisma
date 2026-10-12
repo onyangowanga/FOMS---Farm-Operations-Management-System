@@ -78,18 +78,23 @@ model Organization {
   documents   Document[]
   payments    Payment[]
   audits      AuditLog[]
+  cropTypes   CropType[]
 }
 
 model User {
   id             String       @id @default(uuid()) @db.Uuid
   name           String
   email          String       @unique
+  username       String       @unique
+  isPlatformAdmin Boolean     @default(false)
+  sessionVersion Int          @default(0)
   passwordHash   String
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
   memberships    Membership[]
   refreshTokens  RefreshToken[]
+  setupToken     AccountSetupToken?
   createdFarms   Farm[]       @relation("FarmCreator")
   createdBlocks  Block[]      @relation("BlockCreator")
   createdCrops   CropCycle[]  @relation("CropCreator")
@@ -125,12 +130,22 @@ model RefreshToken {
   id        String   @id @default(uuid()) @db.Uuid
   tokenHash String   @unique
   userId    String   @db.Uuid
-  organizationId String @db.Uuid
+  organizationId String? @db.Uuid
+  sessionVersion Int @default(0)
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+}
+
+model AccountSetupToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Farm {
@@ -207,8 +222,58 @@ model CropCycle {
   farm           Farm         @relation(fields: [farmId], references: [id], onDelete: Cascade)
   block          Block?       @relation(fields: [blockId], references: [id], onDelete: SetNull)
   creator        User?        @relation("CropCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  cropTypeId     String?      @db.Uuid
+  requiresNursery Boolean    @default(false)
+  nurseryDays    Int?
+  transplantDate DateTime?
+  stages         CropStage[]
+  activities     CropActivity[]
+  cropType       CropType?   @relation(fields: [cropTypeId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, farmId, deletedAt])
+}
+
+model CropType {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  name           String
+  requiresNursery Boolean     @default(false)
+  nurseryDays    Int?
+  maturityDays   Int?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  cycles         CropCycle[]
+
+  @@unique([organizationId, name])
+}
+
+model CropStage {
+  id        String    @id @default(uuid()) @db.Uuid
+  cropId    String    @db.Uuid
+  stage     String
+  occurredAt DateTime @default(now())
+  notes     String?
+  recordedBy String?  @db.Uuid
+  createdAt DateTime  @default(now())
+  crop      CropCycle @relation(fields: [cropId], references: [id], onDelete: Cascade)
+
+  @@index([cropId, occurredAt])
+}
+
+model CropActivity {
+  id         String    @id @default(uuid()) @db.Uuid
+  cropId     String    @db.Uuid
+  type       String
+  occurredAt DateTime
+  quantity   Float
+  unit       String
+  product    String?
+  notes      String?
+  recordedBy String?   @db.Uuid
+  createdAt  DateTime  @default(now())
+  crop       CropCycle @relation(fields: [cropId], references: [id], onDelete: Cascade)
+
+  @@index([cropId, occurredAt])
 }
 
 model Livestock {

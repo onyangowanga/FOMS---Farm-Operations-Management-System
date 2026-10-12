@@ -7,6 +7,7 @@ export class AppError extends Error {
 }
 
 export function errorHandler(error, _req, res, _next) {
+  if (error.code === "P2002") return res.status(409).json({ success: false, message: "The username, email, or record name is already in use" });
   const status = Number.isInteger(error.status) ? error.status : 500;
   if (status >= 500) console.error(error);
   res.status(status).json({

@@ -6,24 +6,24 @@ export async function authenticate(req, _res, next) {
   try {
     const token = req.cookies.accessToken;
     if (!token) throw new AppError(401, "Please sign in to continue");
-    const claims = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
-    const membership = await prisma.membership.findFirst({
-      where: { userId: claims.sub, organizationId: claims.organizationId },
-      include: { user: { select: { id: true, name: true, email: true } }, organization: { select: { id: true, name: true } } }
-    });
-    if (!membership || membership.user.deletedAt) throw new AppError(401, "Your session is no longer valid");
-    req.auth = {
-      userId: membership.user.id,
-      name: membership.user.name,
-      email: membership.user.email,
-      organizationId: membership.organizationId,
-      organizationName: membership.organization.name,
-      role: membership.role
-    };
+    let claims;
+    try { claims = jwt.verify(token, process.env.JWT_ACCESS_SECRET); }
+    catch { throw new AppError(401, "Your session is invalid or expired"); }
+    const user = await prisma.user.findUnique({ where: { id: claims.sub } });
+    if (!user || user.deletedAt || (claims.sessionVersion ?? 0) !== user.sessionVersion) throw new AppError(401, "Your session is no longer valid");
+    req.auth = { userId: user.id, name: user.name, email: user.email, username: user.username, sessionVersion: user.sessionVersion };
+    if (user.isPlatformAdmin && claims.organizationId === null) {
+      Object.assign(req.auth, { role: "FOMS_ADMIN", organizationId: null, organizationName: "FOMS Administration" });
+    } else {
+      const membership = await prisma.membership.findUnique({
+        where: { organizationId_userId: { organizationId: claims.organizationId, userId: user.id } },
+        include: { organization: true }
+      });
+      if (!membership || membership.organization.deletedAt) throw new AppError(401, "Your workspace access is no longer valid");
+      Object.assign(req.auth, { role: membership.role, organizationId: membership.organizationId, organizationName: membership.organization.name });
+    }
     next();
-  } catch (error) {
-    next(error instanceof AppError ? error : new AppError(401, "Your session is invalid or expired"));
-  }
+  } catch (error) { next(error); }
 }
 
 export function authorize(...roles) {

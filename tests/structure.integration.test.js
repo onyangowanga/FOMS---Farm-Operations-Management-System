@@ -2,14 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { prisma } from "../server/src/config/database.js";
+import { fixture } from "./helpers.js";
 
 const base = process.env.FOMS_TEST_URL;
 
 test("farm structure API: hierarchy, GPS, permissions, isolation and archive safety", { skip: !base }, async () => {
   const host = new URL(base).hostname;
   assert.ok(["localhost", "127.0.0.1", "app"].includes(host), "Integration tests must use the local test stack");
-  const users = [];
-  const organizations = [];
+  const f = fixture();
+  const users = f.users;
+  const organizations = f.organizations;
   async function request(path, method = "GET", body, cookie = "") {
     const response = await fetch(`${base}/api/v1${path}`, {
       method, headers: { "Content-Type": "application/json", Cookie: cookie },
@@ -20,28 +22,22 @@ test("farm structure API: hierarchy, GPS, permissions, isolation and archive saf
       cookie: response.headers.getSetCookie().map((item) => item.split(";")[0]).join("; ")
     };
   }
-  async function register(label) {
-    const response = await request("/auth/register", "POST", {
-      name: "Structure test", organizationName: `Structure test ${label}`,
-      email: `structure-${crypto.randomUUID()}@example.test`, password: crypto.randomBytes(24).toString("hex")
-    });
-    assert.equal(response.status, 201);
-    users.push(response.body.data.user.id);
-    organizations.push(response.body.data.organization.id);
-    return response.cookie;
+  async function register() {
+    return (await f.seed()).cookie;
   }
   try {
     const owner = await register("owner");
     const outsider = await register("outsider");
     const workerEmail = `worker-${crypto.randomUUID()}@example.test`;
-    const workerPassword = crypto.randomBytes(24).toString("hex");
+    const workerUsername = `worker-${crypto.randomUUID()}`;
+    const workerPassword = `Aa!1${crypto.randomBytes(24).toString("hex")}`;
     const member = await request("/team", "POST", {
-      name: "Structure worker", email: workerEmail, password: workerPassword, role: "WORKER"
+      name: "Structure worker", username: workerUsername, email: workerEmail, password: workerPassword, role: "WORKER"
     }, owner);
     assert.equal(member.status, 201);
     const workerRecord = await prisma.user.findUniqueOrThrow({ where: { email: workerEmail } });
     users.push(workerRecord.id);
-    const worker = (await request("/auth/login", "POST", { email: workerEmail, password: workerPassword })).cookie;
+    const worker = (await request("/auth/login", "POST", { username: workerUsername, password: workerPassword })).cookie;
     const farmResult = await request("/farms", "POST", {
       name: "South farm", acreage: 12, latitude: -1.2921, longitude: 36.8219
     }, owner);

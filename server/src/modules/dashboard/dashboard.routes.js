@@ -8,7 +8,7 @@ router.get("/", async (req, res, next) => {
     const canSeeFinancials = ["OWNER", "MANAGER"].includes(req.auth.role);
     const farmWhere = { organizationId: org, deletedAt: null };
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const [farms, blocks, crops, livestock, tasks, expenses, sales, payments, lowStockItems] = await Promise.all([
+    const [farms, blocks, crops, livestock, tasks, expenses, sales, payments, lowStockItems, activeCropCount, cropCount] = await Promise.all([
       prisma.farm.findMany({ where: farmWhere, select: { id: true, name: true, acreage: true, location: true }, orderBy: { createdAt: "asc" } }),
       prisma.block.count({ where: farmWhere }),
       prisma.cropCycle.findMany({ where: farmWhere, select: { id: true, cropName: true, status: true, acreage: true, expectedHarvest: true }, orderBy: { createdAt: "desc" }, take: 5 }),
@@ -26,7 +26,9 @@ router.get("/", async (req, res, next) => {
       prisma.inventoryItem.findMany({
         where: { organizationId: org, deletedAt: null },
         select: { quantity: true, reorderLevel: true }
-      })
+      }),
+      prisma.cropCycle.count({ where: { ...farmWhere, status: { notIn: ["PLANNED", "HARVESTED", "CANCELLED"] } } }),
+      prisma.cropCycle.count({ where: farmWhere })
     ]);
     const taskCounts = Object.fromEntries(tasks.map((item) => [item.status.toLowerCase(), item._count.id]));
     res.json({
@@ -36,6 +38,8 @@ router.get("/", async (req, res, next) => {
         totalAcreage: farms.reduce((sum, farm) => sum + (farm.acreage || 0), 0),
         blockCount: blocks,
         crops,
+        activeCropCount,
+        cropCount,
         livestock: Object.fromEntries(livestock.map((item) => [item.species.toLowerCase(), item._sum.quantity || 0])),
         tasks: { pending: taskCounts.pending || 0, inProgress: taskCounts.in_progress || 0, completed: taskCounts.completed || 0, approved: taskCounts.approved || 0 },
         monthlyExpenses: expenses._sum.amount || 0,

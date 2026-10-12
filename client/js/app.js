@@ -1,4 +1,5 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.2.0";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.3.0";
+import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.3.0";
 import { offlineStore } from "./offline.js";
 
 const app = document.querySelector("#app");
@@ -6,12 +7,12 @@ const toastRoot = document.querySelector("#toast-root");
 const navGroups = [
   { title: "OVERVIEW", items: [["dashboard", "◫", "Dashboard"], ["structure", "▦", "Farm structure"]] },
   { title: "FARM OPERATIONS", items: [["farms", "⌂", "Farms"], ["blocks", "▦", "Blocks"], ["crops", "❋", "Crops"], ["livestock", "♧", "Livestock"], ["tasks", "☑", "Tasks"], ["journal", "▤", "Farm journal"]] },
-  { title: "MANAGEMENT", items: [["inventory", "▤", "Inventory"], ["sales", "$", "Sales & invoices"], ["expenses", "↗", "Expenses"], ["documents", "▧", "Documents"], ["team", "♙", "Team"]] }
+  { title: "MANAGEMENT", items: [["inventory", "▤", "Inventory"], ["sales", "$", "Sales & invoices"], ["expenses", "↗", "Expenses"], ["documents", "▧", "Documents"], ["team", "♙", "Team"], ["account", "⚙", "Account"]] }
 ];
 const config = {
   farms: { title: "Farms", singular: "farm", endpoint: "farms", roles: ["OWNER", "MANAGER"], fields: [["name", "Farm name", "text", true], ["location", "Location", "text"], ["acreage", "Total acreage", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["description", "Notes", "textarea"]], columns: [["name", "Farm"], ["location", "Location"], ["acreage", "Acres"], ["latitude", "Latitude"], ["longitude", "Longitude"]] },
   blocks: { title: "Farm blocks", singular: "block", endpoint: "blocks", roles: ["OWNER", "MANAGER"], fields: [["farmId", "Farm", "farm", true], ["name", "Block name", "text", true], ["acreage", "Area (acres)", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["currentUse", "Current use", "text"], ["soilType", "Soil type", "text"]], columns: [["name", "Block"], ["farmId", "Farm"], ["acreage", "Acres"], ["currentUse", "Current use"], ["soilType", "Soil type"]] },
-  crops: { title: "Crop cycles", singular: "crop cycle", endpoint: "crops", roles: ["OWNER", "MANAGER", "AGRONOMIST"], fields: [["farmId", "Farm", "farm", true], ["cropName", "Crop name", "text", true], ["variety", "Variety", "text"], ["status", "Stage", "select", false, ["PLANNED", "GROWING", "HARVESTED", "CANCELLED"]], ["acreage", "Area (acres)", "number"], ["plantingDate", "Planting date", "date"], ["expectedHarvest", "Expected harvest", "date"], ["expectedYield", "Expected yield", "number"], ["notes", "Notes", "textarea"]], columns: [["cropName", "Crop"], ["variety", "Variety"], ["status", "Stage"], ["expectedHarvest", "Harvest date"]] },
+  crops: { title: "Crop management", singular: "crop cycle", endpoint: "crops", roles: ["OWNER", "MANAGER", "AGRONOMIST"] },
   livestock: { title: "Livestock", singular: "livestock record", endpoint: "livestock", roles: ["OWNER", "MANAGER"], fields: [["farmId", "Farm", "farm", true], ["species", "Species", "select", true, ["GOAT", "SHEEP", "POULTRY"]], ["identifier", "ID / batch", "text"], ["breed", "Breed", "text"], ["quantity", "Quantity", "number"], ["healthStatus", "Health", "select", false, ["HEALTHY", "UNDER_TREATMENT", "SICK", "DECEASED"]], ["weightKg", "Weight (kg)", "number"], ["lastVaccinated", "Last vaccinated", "date"], ["notes", "Notes", "textarea"]], columns: [["species", "Species"], ["identifier", "ID / batch"], ["breed", "Breed"], ["quantity", "Quantity"], ["healthStatus", "Health"]] },
   tasks: { title: "Tasks", singular: "task", endpoint: "tasks", roles: ["OWNER", "MANAGER"], fields: [["title", "Task title", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "text"], ["description", "Description", "textarea"], ["assignedTo", "Assign to", "team"], ["priority", "Priority", "select", false, ["LOW", "MEDIUM", "HIGH", "URGENT"]], ["dueDate", "Due date", "date"]], columns: [["title", "Task"], ["category", "Category"], ["priority", "Priority"], ["dueDate", "Due"], ["status", "Status"]] },
   journal: { title: "Farm journal", singular: "journal entry", endpoint: "journal", roles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"], fields: [["title", "Entry title", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "select", false, ["OBSERVATION", "ACTIVITY", "PEST_DISEASE", "WEATHER", "RECOMMENDATION"]], ["body", "What happened?", "textarea", true], ["weather", "Weather", "text"], ["incident", "Pest or disease incident", "textarea"], ["cost", "Cost (KES)", "number"], ["observedAt", "Date observed", "date"]], columns: [["title", "Entry"], ["category", "Type"], ["body", "Details"], ["observedAt", "Date"]] },
@@ -54,8 +55,7 @@ function icon(symbol, extra = "") {
   return `<span aria-hidden="true" class="inline-flex h-5 w-5 items-center justify-center text-lg ${extra}">${symbol}</span>`;
 }
 
-function renderAuth(mode = "login") {
-  const register = mode === "register";
+function renderAuth() {
   app.innerHTML = `
     <main class="flex min-h-screen bg-white">
       <section class="hidden w-1/2 flex-col justify-between bg-forest-900 p-12 text-white lg:flex">
@@ -70,30 +70,30 @@ function renderAuth(mode = "login") {
       <section class="flex flex-1 items-center justify-center px-6 py-12">
         <form id="auth-form" class="w-full max-w-md">
           <a class="mb-12 inline-block text-xl font-bold tracking-tight text-forest-700 lg:hidden" href="/">FOMS</a>
-          <p class="text-sm font-semibold text-forest-600">${register ? "LET'S GET YOU STARTED" : "WELCOME BACK"}</p>
-          <h2 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">${register ? "Create your workspace" : "Sign in to FOMS"}</h2>
-          <p class="mt-2 text-sm text-slate-500">${register ? "Set up your farm organization in a few steps." : "Enter your details to access your farm dashboard."}</p>
+          <p class="text-sm font-semibold text-forest-600">WELCOME BACK</p>
+          <h2 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Sign in to FOMS</h2>
+          <p class="mt-2 text-sm text-slate-500">Enter your username and password to access your workspace.</p>
           <div class="mt-8 space-y-4">
-            ${register ? `<label class="block"><span class="label">Your name</span><input name="name" class="field" autocomplete="name" required minlength="2"></label><label class="block"><span class="label">Farm organization</span><input name="organizationName" class="field" placeholder="e.g. Green Valley Farms" required minlength="2"></label>` : ""}
-            <label class="block"><span class="label">Email address</span><input name="email" class="field" type="email" autocomplete="email" required></label>
-            <label class="block"><span class="label">Password</span><input name="password" class="field" type="password" autocomplete="${register ? "new-password" : "current-password"}" ${register ? "minlength=\"10\"" : ""} required></label>
-            ${register ? `<p class="text-xs leading-5 text-slate-500">Use at least 10 characters. Your password is securely hashed and never stored in plain text.</p>` : ""}
+            <label class="block"><span class="label">Username</span><input name="username" class="field" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+            <label class="block"><span class="label">Password</span><input name="password" class="field" type="password" autocomplete="current-password" required></label>
           </div>
-          <button class="btn-primary mt-7 w-full py-3" type="submit">${register ? "Create farm workspace" : "Sign in"} <span aria-hidden="true">→</span></button>
-          <p class="mt-6 text-center text-sm text-slate-500">${register ? "Already have an account?" : "New to FOMS?"} <button id="auth-toggle" type="button" class="font-semibold text-forest-700 hover:underline">${register ? "Sign in" : "Create an account"}</button></p>
+          <button class="btn-primary mt-7 w-full py-3" type="submit">Sign in <span aria-hidden="true">→</span></button>
+          <p class="mt-6 text-center text-sm text-slate-500">Accounts are provided by your workspace administrator.</p>
           <p id="auth-error" class="mt-4 hidden rounded-xl bg-red-50 p-3 text-sm text-red-700"></p>
         </form>
       </section>
     </main>`;
-  document.querySelector("#auth-toggle").addEventListener("click", () => renderAuth(register ? "login" : "register"));
   document.querySelector("#auth-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = event.currentTarget.querySelector("button[type=submit]");
     button.disabled = true;
     try {
       const form = Object.fromEntries(new FormData(event.currentTarget));
-      const response = await api.post(`/auth/${register ? "register" : "login"}`, form);
+      const response = await api.post("/auth/login", form);
       currentUser = response.data;
+      mobileOpen = false;
+      currentPage = currentUser.role === "FOMS_ADMIN" ? "clients" : "dashboard";
+      history.replaceState(null, "", `#${currentPage}`);
       setOfflineIdentity({ organizationId: currentUser.organization.id, userId: currentUser.user.id });
       await renderApp();
     } catch (error) {
@@ -106,9 +106,9 @@ function renderAuth(mode = "login") {
 
 function shell() {
   const initials = currentUser.user.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
-  const visibleNavGroups = navGroups.map((group) => ({
+  const visibleNavGroups = currentUser.role === "FOMS_ADMIN" ? [{ title: "ADMINISTRATION", items: [["clients", "♙", "Clients"], ["account", "⚙", "Account"]] }] : navGroups.map((group) => ({
     ...group,
-    items: group.items.filter(([page]) => !["expenses", "sales"].includes(page) || ["OWNER", "MANAGER"].includes(currentUser.role))
+    items: group.items.filter(([page]) => (!["expenses", "sales"].includes(page) || ["OWNER", "MANAGER"].includes(currentUser.role)) && (page !== "livestock" || currentUser.role !== "AGRONOMIST"))
   }));
   app.innerHTML = `
     <div class="min-h-screen lg:flex">
@@ -130,15 +130,15 @@ function shell() {
         <div class="mt-4 border-t border-forest-700 pt-4">
           <div class="flex items-center gap-3 rounded-xl p-2">
             <div class="flex h-9 w-9 items-center justify-center rounded-full bg-forest-50 text-xs font-bold text-forest-700">${escapeHtml(initials)}</div>
-            <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${escapeHtml(currentUser.user.name)}</p><p class="truncate text-xs text-emerald-100">${escapeHtml(currentUser.user.email)}</p></div>
+            <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${escapeHtml(currentUser.user.name)}</p><p class="truncate text-xs text-emerald-100">${escapeHtml(currentUser.user.username)}</p></div>
             <button id="logout" class="rounded-lg p-2 text-emerald-100 hover:bg-forest-700 hover:text-white" aria-label="Sign out">↪</button>
           </div>
           <div id="connection-status" class="mt-2 px-2 text-xs text-emerald-200"></div>
         </div>
       </aside>
-      <main class="min-h-screen lg:ml-64">
+      <main class="min-h-screen min-w-0 flex-1 lg:ml-64">
         <header class="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-slate-100 bg-white/95 px-4 backdrop-blur sm:px-7">
-          <div class="flex items-center gap-3"><button id="open-mobile" class="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="Open menu">☰</button><p class="hidden text-sm text-slate-400 sm:block">${escapeHtml(currentUser.organization.name)} <span class="mx-1">/</span></p><span class="text-sm font-semibold text-slate-800">${navGroups.flatMap((group) => group.items).find(([page]) => page === currentPage)?.[2] || "Dashboard"}</span></div>
+          <div class="flex items-center gap-3"><button id="open-mobile" class="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="Open menu">☰</button><p class="hidden text-sm text-slate-400 sm:block">${escapeHtml(currentUser.organization.name)} <span class="mx-1">/</span></p><span class="text-sm font-semibold text-slate-800">${visibleNavGroups.flatMap((group) => group.items).find(([page]) => page === currentPage)?.[2] || "Dashboard"}</span></div>
           <div class="flex items-center gap-3"><span id="sync-indicator" class="hidden rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 sm:inline-flex"></span><span class="hidden text-xs text-slate-400 sm:inline">${new Intl.DateTimeFormat("en", { weekday: "short", month: "short", day: "numeric" }).format(new Date())}</span><div class="flex h-9 w-9 items-center justify-center rounded-full bg-forest-50 text-xs font-bold text-forest-700">${escapeHtml(initials)}</div></div>
         </header>
         <div id="content" class="mx-auto max-w-[1440px] p-4 sm:p-7"></div>
@@ -156,6 +156,7 @@ function shell() {
       showToast(`Sign-out could not reach the server: ${error.message}`, "error");
     }
     currentUser = null;
+    mobileOpen = false;
     setOfflineIdentity(null);
     renderAuth();
   });
@@ -170,13 +171,14 @@ async function renderApp() {
 
 async function navigate(page) {
   currentPage = page;
+  history.replaceState(null, "", `#${page}`);
   mobileOpen = false;
   shell();
   await renderPage();
 }
 
-function metric(title, value, subtitle, symbol, tint = "bg-forest-50 text-forest-700") {
-  return `<article class="card"><div class="flex items-start justify-between"><div><p class="text-sm font-medium text-slate-500">${title}</p><p class="mt-3 text-3xl font-semibold tracking-tight text-slate-900">${value}</p><p class="mt-2 text-xs text-slate-400">${subtitle}</p></div><div class="flex h-11 w-11 items-center justify-center rounded-xl ${tint}">${icon(symbol)}</div></div></article>`;
+function metric(title, value, subtitle, symbol, tint = "bg-forest-50 text-forest-700", page = "dashboard") {
+  return `<a href="#${page}" class="card block p-3 text-slate-800 transition hover:border-forest-500 focus-visible:ring-2 focus-visible:ring-forest-500 sm:p-5"><div class="flex items-start justify-between gap-1"><div class="min-w-0"><p class="text-xs font-medium text-slate-500 sm:text-sm">${title}</p><p class="mt-2 break-words text-lg font-semibold tracking-tight text-slate-900 sm:mt-3 sm:text-3xl">${value}</p><p class="mt-2 text-[10px] text-slate-500 sm:text-xs">${subtitle}</p></div><div class="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl sm:flex ${tint}">${icon(symbol)}</div></div></a>`;
 }
 
 async function renderDashboard() {
@@ -185,18 +187,18 @@ async function renderDashboard() {
   const totalAnimals = Object.values(data.livestock).reduce((sum, count) => sum + count, 0);
   content.innerHTML = `
     <div class="mb-7 flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium text-forest-600">FARM OVERVIEW</p><h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Good ${new Date().getHours() < 12 ? "morning" : "afternoon"}, ${escapeHtml(currentUser.user.name.split(" ")[0])}</h1><p class="mt-2 text-sm text-slate-500">Here's what's happening across your farm today.</p></div><button id="quick-add" class="btn-primary">${icon("+")} Quick add</button></div>
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      ${metric("Farm acreage", `${Number(data.totalAcreage).toLocaleString()} <span class="text-base font-medium text-slate-400">ac</span>`, `${data.farmCount} ${data.farmCount === 1 ? "farm" : "farms"} · ${data.blockCount} blocks`, "⌂")}
-      ${metric("Active crop cycles", data.crops.filter((crop) => crop.status === "GROWING").length, `${data.crops.length} recent crop records`, "❋", "bg-amber-50 text-amber-700")}
-      ${metric("Livestock", totalAnimals.toLocaleString(), `${data.livestock.goat || 0} goats · ${data.livestock.sheep || 0} sheep · ${data.livestock.poultry || 0} poultry`, "♧", "bg-sky-50 text-sky-700")}
-      ${metric("Low stock items", data.lowStockItems, "At or below reorder level", "!", "bg-amber-50 text-amber-700")}
-      ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Monthly revenue", `KES ${Number(data.monthlyRevenue).toLocaleString()}`, `${data.monthlySalesCount} invoices · ${Number(data.monthlyCollected).toLocaleString()} collected`, "$", "bg-emerald-50 text-emerald-700") : ""}
-      ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Net profit", `KES ${Number(data.monthlyProfit).toLocaleString()}`, "Revenue less expenses this month", "↗", "bg-sky-50 text-sky-700") : ""}
-      ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Monthly expenses", `KES ${Number(data.monthlyExpenses).toLocaleString()}`, "Total recorded this month", "↘", "bg-rose-50 text-rose-700") : ""}
+    <div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      ${metric("Farm acreage", `${Number(data.totalAcreage).toLocaleString()} <span class="text-base font-medium text-slate-400">ac</span>`, `${data.farmCount} ${data.farmCount === 1 ? "farm" : "farms"} · ${data.blockCount} blocks`, "⌂", undefined, "farms")}
+      ${metric("Active crop cycles", data.activeCropCount, `${data.cropCount} crop records`, "❋", "bg-amber-50 text-amber-700", "crops")}
+      ${currentUser.role !== "AGRONOMIST" ? metric("Livestock", totalAnimals.toLocaleString(), `${data.livestock.goat || 0} goats · ${data.livestock.sheep || 0} sheep · ${data.livestock.poultry || 0} poultry`, "♧", "bg-sky-50 text-sky-700", "livestock") : ""}
+      ${metric("Low stock items", data.lowStockItems, "At or below reorder level", "!", "bg-amber-50 text-amber-700", "inventory")}
+      ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Monthly revenue", `KES ${Number(data.monthlyRevenue).toLocaleString()}`, `${data.monthlySalesCount} invoices · ${Number(data.monthlyCollected).toLocaleString()} collected`, "$", "bg-emerald-50 text-emerald-700", "sales") : ""}
+      ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Net profit", `KES ${Number(data.monthlyProfit).toLocaleString()}`, "Revenue less expenses this month", "↗", "bg-sky-50 text-sky-700", "sales") : ""}
+      ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Monthly expenses", `KES ${Number(data.monthlyExpenses).toLocaleString()}`, "Total recorded this month", "↘", "bg-rose-50 text-rose-700", "expenses") : ""}
     </div>
     <div class="mt-5 grid gap-5 xl:grid-cols-[1.5fr_1fr]">
       <section class="card"><div class="flex items-center justify-between"><div><h2 class="font-semibold text-slate-900">Crop progress</h2><p class="mt-1 text-xs text-slate-400">Your latest crop cycles</p></div><button data-goto="crops" class="text-xs font-semibold text-forest-700 hover:underline">View crops →</button></div>
-        ${data.crops.length ? `<div class="mt-5 divide-y divide-slate-100">${data.crops.map((crop) => `<div class="flex items-center gap-3 py-3"><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-forest-50 text-forest-600">❋</div><div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${escapeHtml(crop.cropName)}</p><p class="mt-1 text-xs text-slate-400">${crop.acreage ? `${crop.acreage} acres` : "Area not set"}${crop.expectedHarvest ? ` · Harvest ${new Date(crop.expectedHarvest).toLocaleDateString()}` : ""}</p></div><span class="rounded-full bg-forest-50 px-2.5 py-1 text-[11px] font-semibold text-forest-700">${escapeHtml(crop.status.toLowerCase().replace("_", " "))}</span></div>`).join("")}</div>` : `<div class="py-12 text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-forest-50 text-forest-600">❋</div><p class="mt-4 text-sm font-semibold">No crop cycles yet</p><p class="mt-1 text-xs text-slate-400">Add your first crop record to start tracking progress.</p><button data-create="crops" class="btn-secondary mt-4">Add a crop</button></div>`}
+        ${data.crops.length ? `<div class="mt-5 divide-y divide-slate-100">${data.crops.map((crop) => `<a href="#crops/${crop.id}" class="flex items-center gap-3 rounded-lg py-3 text-slate-800 hover:bg-forest-50 focus-visible:ring-2 focus-visible:ring-forest-500"><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-forest-50 text-forest-600">❋</div><div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${escapeHtml(crop.cropName)}</p><p class="mt-1 text-xs text-slate-400">${crop.acreage ? `${crop.acreage} acres` : "Area not set"}${crop.expectedHarvest ? ` · Harvest ${new Date(crop.expectedHarvest).toLocaleDateString()}` : ""}</p></div><span class="rounded-full bg-forest-50 px-2.5 py-1 text-[11px] font-semibold text-forest-700">${escapeHtml(crop.status.toLowerCase().replaceAll("_", " "))}</span></a>`).join("")}</div>` : `<div class="py-12 text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-forest-50 text-forest-600">❋</div><p class="mt-4 text-sm font-semibold">No crop cycles yet</p><p class="mt-1 text-xs text-slate-400">Add your first crop record to start tracking progress.</p>${["OWNER", "MANAGER", "AGRONOMIST"].includes(currentUser.role) ? '<button data-create="crops" class="btn-secondary mt-4">Add a crop</button>' : ""}</div>`}
       </section>
       <section class="card"><div class="flex items-center justify-between"><div><h2 class="font-semibold text-slate-900">Tasks at a glance</h2><p class="mt-1 text-xs text-slate-400">Work across your farm</p></div><button data-goto="tasks" class="text-xs font-semibold text-forest-700 hover:underline">View tasks →</button></div>
         <div class="mt-5 space-y-3">${[["pending", "Pending", "bg-amber-400"], ["inProgress", "In progress", "bg-sky-500"], ["completed", "Completed", "bg-forest-500"], ["approved", "Approved", "bg-violet-500"]].map(([key, title, color]) => `<div class="flex items-center gap-3"><span class="h-2 w-2 rounded-full ${color}"></span><span class="flex-1 text-sm text-slate-600">${title}</span><span class="text-sm font-semibold">${data.tasks[key]}</span></div>`).join("")}</div>
@@ -539,7 +541,8 @@ async function startCreate(page) {
       ? ["FARM_PHOTO"]
       : ["SOIL_REPORT", "WATER_ANALYSIS", "PATHOLOGY_REPORT", "FARM_LICENSE", "PURCHASE_RECEIPT", "AGRONOMIST_REPORT", "FARM_PHOTO", "OTHER"];
     openDocumentModal(categories);
-  } else openRecordModal(page);
+  } else if (page === "crops") await openCropModal();
+  else openRecordModal(page);
 }
 
 function fieldMarkup([key, label, type, required = false, options = []], values = {}) {
@@ -637,38 +640,16 @@ async function renderPage() {
     else if (currentPage === "inventory") await renderInventory();
     else if (currentPage === "sales") await renderSales();
     else if (currentPage === "documents") await renderDocuments();
-    else if (currentPage === "team") await renderTeam();
+    else if (currentPage === "clients") await renderClients();
+    else if (currentPage === "account") renderAccount();
+    else if (currentPage === "crops") await renderCrops(location.hash.split("/")[1]);
+    else if (currentPage === "team") await renderWorkspaceTeam();
     else if (config[currentPage]) await renderResource(currentPage);
   } catch (error) {
     content.innerHTML = `<div class="card mx-auto mt-10 max-w-lg p-8 text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-xl text-amber-700">!</div><h2 class="mt-4 font-semibold">We couldn't load this page</h2><p class="mt-2 text-sm text-slate-500">${escapeHtml(error.message)}</p><button id="retry" class="btn-secondary mt-5">Try again</button></div>`;
     document.querySelector("#retry").addEventListener("click", renderPage);
   }
 
-  async function renderTeam() {
-    const { data } = await api.get("/team");
-    const content = document.querySelector("#content");
-    const canManage = currentUser.role === "OWNER";
-    content.innerHTML = `
-      <div class="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium text-forest-600">YOUR PEOPLE</p><h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Team</h1><p class="mt-2 text-sm text-slate-500">Workspace members and their farm roles.</p></div>${canManage ? `<button id="add-member" class="btn-primary">＋ Add team member</button>` : ""}</div>
-      <section class="card overflow-hidden p-0"><div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-semibold">Members</h2><p class="mt-1 text-xs text-slate-400">${data.length} ${data.length === 1 ? "member" : "members"}</p></div><div class="divide-y divide-slate-100">${data.map((member) => `<div class="flex items-center gap-3 px-5 py-4"><div class="flex h-10 w-10 items-center justify-center rounded-full bg-forest-50 text-xs font-bold text-forest-700">${escapeHtml(member.user.name.split(/\\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase())}</div><div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${escapeHtml(member.user.name)}</p><p class="truncate text-xs text-slate-400">${escapeHtml(member.user.email)}</p></div><span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold capitalize text-slate-600">${escapeHtml(member.role.toLowerCase())}</span></div>`).join("")}</div></section>
-      ${canManage ? `<p class="mt-4 text-xs leading-5 text-slate-400">Share initial passwords through a secure channel and avoid reusing existing credentials.</p>` : ""}`;
-    document.querySelector("#add-member")?.addEventListener("click", openMemberModal);
-  }
-
-  function openMemberModal() {
-    const root = document.querySelector("#modal-root");
-    root.innerHTML = `<div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 sm:items-center sm:p-5"><div class="w-full max-w-lg rounded-t-3xl bg-white p-6 sm:rounded-2xl"><div class="flex items-center justify-between"><div><p class="text-xs font-semibold uppercase tracking-wider text-forest-600">WORKSPACE ACCESS</p><h2 class="mt-1 text-lg font-semibold">Add team member</h2></div><button data-close class="rounded-lg p-2 text-slate-400" aria-label="Close">✕</button></div><form id="member-form" class="mt-5 space-y-4"><label class="block"><span class="label">Full name</span><input class="field" name="name" required minlength="2" maxlength="100"></label><label class="block"><span class="label">Email</span><input class="field" type="email" name="email" required></label><label class="block"><span class="label">Temporary password (at least 12 characters)</span><input class="field" type="password" name="password" required minlength="12" maxlength="72" autocomplete="new-password"></label><label class="block"><span class="label">Role</span><select class="field" name="role" required><option value="MANAGER">Manager</option><option value="AGRONOMIST">Agronomist</option><option value="WORKER">Farm worker</option><option value="OWNER">Owner</option></select></label><div class="flex gap-3 pt-2"><button type="button" data-close class="btn-secondary flex-1">Cancel</button><button type="submit" class="btn-primary flex-1">Add member</button></div></form></div></div>`;
-    root.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => { root.innerHTML = ""; }));
-    root.querySelector("#member-form").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      try {
-        const response = await api.post("/team", Object.fromEntries(new FormData(event.currentTarget)));
-        root.innerHTML = "";
-        showToast(response.message);
-        await renderTeam();
-      } catch (error) { showToast(error.message, "error"); }
-    });
-  }
 }
 
 function updateConnectivity() {
@@ -706,9 +687,15 @@ function setupConnectivity() {
 
 async function start() {
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch((error) => console.error("Service worker registration failed", error));
+  if (location.hash.startsWith("#setup/")) {
+    renderSetup(location.hash.slice(7));
+    return;
+  }
   try {
     const { data } = await api.get("/auth/me");
     currentUser = data;
+    const requestedPage = location.hash.slice(1).split("/")[0];
+    currentPage = currentUser.role === "FOMS_ADMIN" ? "clients" : (navGroups.some((group) => group.items.some(([page]) => page === requestedPage)) ? requestedPage : "dashboard");
     setOfflineIdentity({ organizationId: currentUser.organization.id, userId: currentUser.user.id });
     await renderApp();
   } catch (error) {
@@ -719,4 +706,23 @@ async function start() {
   }
 }
 
+configureV03({
+  escapeHtml, showToast, loadAll, navigate, getUser: () => currentUser, reload: renderPage,
+  signedOut: () => { currentUser = null; mobileOpen = false; setOfflineIdentity(null); renderAuth(); }
+});
+window.addEventListener("hashchange", async () => {
+  if (location.hash.startsWith("#setup/")) {
+    currentUser = null;
+    setOfflineIdentity(null);
+    renderSetup(location.hash.slice(7));
+    return;
+  }
+  if (!currentUser) return;
+  const page = location.hash.slice(1).split("/")[0];
+  const allowed = currentUser.role === "FOMS_ADMIN" ? ["clients", "account"] : navGroups.flatMap((group) => group.items.map(([key]) => key));
+  if (!allowed.includes(page)) return;
+  currentPage = page;
+  mobileOpen = false;
+  await renderApp();
+});
 start();

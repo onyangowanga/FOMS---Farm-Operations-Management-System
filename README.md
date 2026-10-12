@@ -6,7 +6,7 @@ The interface uses a dark forest-green theme (`#173b27`) for desktop/mobile navi
 
 ## Included in this foundation release
 
-- Organization workspace registration and sign-in with short-lived access JWTs, rotating refresh tokens, bcrypt password hashing, and HttpOnly cookies.
+- Username sign-in with short-lived access JWTs, rotating refresh tokens, bcrypt password hashing, and HttpOnly cookies. Public registration is disabled.
 - Organization-scoped farms, blocks, crop cycles, livestock, tasks, farm journal entries, and expense records.
 - Role-based access for owners, managers, agronomists, and workers.
 - Operational dashboard, responsive Vanilla JS interface, installable PWA shell, offline record queue, and audit events.
@@ -35,7 +35,7 @@ Requirements: Node.js 20+, npm, and PostgreSQL 14+.
 4. Build the stylesheet with `npm run build:css`.
 5. Start the app with `npm run dev` and visit `http://localhost:3000`.
 
-The first person to register creates an organization and becomes its owner. The health endpoint is `GET /api/v1/health`.
+Create a trusted platform administrator with `node scripts/create-admin.js` in an interactive terminal, then sign in and create client workspaces from Clients. The health endpoint is `GET /api/v1/health`.
 
 ## Containerized testing (recommended)
 
@@ -47,7 +47,7 @@ From this directory, start the complete stack with:
 docker compose up --build
 ```
 
-Compose starts PostgreSQL, waits for its health check, applies the Prisma migrations, and then starts FOMS. Open `http://localhost:3000`; the API health check is `http://localhost:3000/api/v1/health`. The first registration creates the owner account and farm workspace.
+Compose starts PostgreSQL, waits for its health check, applies the Prisma migrations, and then starts FOMS. Open `http://localhost:3000`; the API health check is `http://localhost:3000/api/v1/health`. Bootstrap your administrator in a trusted interactive terminal with `docker compose exec app node scripts/create-admin.js`.
 
 The compose defaults are for local testing only. `POSTGRES_PASSWORD` and `JWT_ACCESS_SECRET` can be overridden in a local `.env` file; change both before using the stack beyond a local machine. Set `FOMS_PORT` to change the host port, for example `FOMS_PORT=3001`.
 
@@ -81,4 +81,25 @@ Both `farmoms.co.ke` and `www.farmoms.co.ke` resolve to `185.167.97.200` and are
 
 ## API resources
 
-All application endpoints are under `/api/v1`. Authentication endpoints are `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, and `/auth/me`. Authenticated resource routes include `/dashboard`, `/organization`, `/farms`, `/blocks`, `/crops`, `/livestock`, `/tasks`, `/journal`, `/expenses`, `/team`, `/inventory`, `/sales`, and `/documents`. `GET /organization` returns the complete active farm/block hierarchy; owners can rename the workspace with `PATCH /organization`. Farms and blocks support create, edit and archive; `GET /blocks?farmId=<uuid>` filters by farm, and lists support `page` and `limit` (up to 100). Inventory movements use `/inventory/items/:id/movements`; sale payments use `/sales/:id/payments`; document uploads and downloads use `/documents`.
+All application endpoints are under `/api/v1`. Authentication endpoints are `/auth/login`, `/auth/password`, `/auth/refresh`, `/auth/logout`, and `/auth/me`; `/auth/register` always returns 403. Authenticated resource routes include `/dashboard`, `/organization`, `/farms`, `/blocks`, `/crops`, `/livestock`, `/tasks`, `/journal`, `/expenses`, `/team`, `/inventory`, `/sales`, and `/documents`. `GET /organization` returns the complete active farm/block hierarchy; owners can rename the workspace with `PATCH /organization`. Farms and blocks support create, edit and archive; `GET /blocks?farmId=<uuid>` filters by farm, and lists support `page` and `limit` (up to 100). Inventory movements use `/inventory/items/:id/movements`; sale payments use `/sales/:id/payments`; document uploads and downloads use `/documents`.
+
+## Version 0.3 - Controlled access and crop management
+
+- Everyone uses the same username/password login. The platform-only `FOMS_ADMIN` role is not advertised on the login page and is never assignable through Team or client onboarding.
+- Only FOMS Admin creates a client workspace and its initial owner (`GET/POST /admin/clients`). Owners then set up farms, blocks and users. Platform sessions cannot access client farm APIs.
+- Usernames are globally unique, case-insensitive, 3-80 characters, using letters, digits, dots, underscores and hyphens. The migration uses unique email prefixes where possible and a UUID suffix for collisions/short prefixes. Existing passwords remain valid; email is contact information, not a login identifier.
+- New/changed passwords require 8-72 characters, at least one letter, number and special character, and no more than 72 UTF-8 bytes. Account allows password changes after verifying the current password; all sessions are revoked.
+- Owner/manager user management covers all farms in their workspace. Managers cannot manage owners. The last owner cannot be demoted/removed, and users cannot remove their own access. Removing membership preserves historical records and clears task assignments. Editing access/profile revokes sessions. No cross-workspace member operations are permitted.
+- Dashboard metrics use two compact columns on mobile and link to their source pages. Crop progress remains full-width on mobile, with links to each crop.
+- Crop types store nursery duration and field maturity defaults. Cycles support nursery sowing, planned field planting/transplant, actual transplant and expected harvest dates. Nursery crops need a sowing date and duration; the form suggests transplant/harvest dates but permits adjustments.
+- Open a crop to edit details, change its observed stage with a reason and timestamp, or record irrigation, fertilizer applications and harvests. Stage history is retained; corrections are explicit and dates never automatically advance stages. Stages: planned, nursery, transplanted, growing, flowering, fruiting, ready to harvest, harvested, cancelled.
+- Activities retain quantities and units; fertilizer requires a product name. Harvest totals are grouped by unit without unsafe conversions, and do not automatically create inventory movements or sales. Crop archives retain lifecycle/activity history.
+- Crop APIs: `/crops/types` (list/create), `/crops/types/:id` (edit), `/crops/:id` (read/edit/archive), `/crops/:id/stages` and `/crops/:id/activities` (create records). Lifecycle updates must use the stages endpoint, not a generic crop patch.
+
+### V0.3 rollout
+
+Back up the database and uploads before deploying. The additive migration preserves users, farm data and crop stages. Before switching users to the release, extract the migrated usernames in a trusted server terminal or from Team/Admin, and share them securely. Do not expose password hashes.
+
+Bootstrap the developer account on the VPS with `docker compose --project-name foms-vps exec app node scripts/create-admin.js` from `/opt/foms` after migration. This prompts for a new, unique username/contact email and a hidden password; it never promotes a client owner or accepts credentials through a public API. Use the normal login page afterward.
+
+Alternatively, use the same trusted command with `--setup-link --url=https://farmoms.co.ke` to create a new administrator with a one-time password setup link. Non-interactive trusted provisioning may additionally supply `--name=... --username=... --email=...`; no password is accepted in command arguments. The random 256-bit token is stored only as a SHA-256 hash, expires after 24 hours and is consumed atomically. The link carries the token in its URL fragment rather than server request URLs. Keep it private; it grants the ability to set that admin's initial password. This does not enable public account registration.

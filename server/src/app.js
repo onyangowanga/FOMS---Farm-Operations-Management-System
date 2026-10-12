@@ -6,14 +6,17 @@ import helmet from "helmet";
 import multer from "multer";
 import { z } from "zod";
 import authRoutes from "./modules/auth/auth.routes.js";
+import adminRoutes from "./modules/auth/admin.routes.js";
 import dashboardRoutes from "./modules/dashboard/dashboard.routes.js";
 import teamRoutes from "./modules/team/team.routes.js";
 import inventoryRoutes from "./modules/inventory/inventory.routes.js";
 import salesRoutes from "./modules/sales/sales.routes.js";
 import documentsRoutes from "./modules/documents/documents.routes.js";
+import cropRoutes from "./modules/resources/crop.routes.js";
 import { createResourceRouter } from "./modules/resources/resource.routes.js";
 import { createStructureRouter, organizationRouter } from "./modules/resources/structure.routes.js";
 import { authenticate } from "./middleware/authenticate.js";
+import { AppError } from "./shared/errors.js";
 import { errorHandler } from "./shared/errors.js";
 import { prisma } from "./config/database.js";
 
@@ -36,6 +39,11 @@ app.get("/api/v1/health", async (_req, res, next) => {
 });
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1", authenticate);
+app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1", (req, _res, next) => {
+  if (!req.auth.organizationId) return next(new AppError(403, "FOMS Admin access is separate from client workspaces"));
+  next();
+});
 app.use("/api/v1/dashboard", dashboardRoutes);
 app.use("/api/v1/team", teamRoutes);
 app.use("/api/v1/inventory", inventoryRoutes);
@@ -44,7 +52,8 @@ app.use("/api/v1/documents", documentsRoutes);
 app.use("/api/v1/organization", organizationRouter);
 app.use("/api/v1/farms", createStructureRouter("farms"));
 app.use("/api/v1/blocks", createStructureRouter("blocks"));
-for (const [path, name] of Object.entries({ crops: "crops", livestock: "livestock", tasks: "tasks", journal: "journal", expenses: "expenses" })) {
+app.use("/api/v1/crops", cropRoutes);
+for (const [path, name] of Object.entries({ livestock: "livestock", tasks: "tasks", journal: "journal", expenses: "expenses" })) {
   app.use(`/api/v1/${path}`, createResourceRouter(name));
 }
 app.use("/api/v1", (_req, res) => res.status(404).json({ success: false, message: "API endpoint was not found" }));

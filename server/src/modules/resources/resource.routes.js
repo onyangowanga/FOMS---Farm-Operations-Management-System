@@ -10,7 +10,6 @@ const nullableDate = z.coerce.date().nullable().optional();
 const nullableNumber = z.coerce.number().finite().nonnegative().nullable().optional();
 const uuid = z.uuid();
 const schemas = {
-  crops: z.object({ farmId: uuid, blockId: uuid.nullable().optional(), cropName: z.string().trim().min(1).max(120), variety: nullableText, status: z.enum(["PLANNED", "GROWING", "HARVESTED", "CANCELLED"]).optional(), acreage: nullableNumber, expectedYield: nullableNumber, nurseryDate: nullableDate, plantingDate: nullableDate, expectedHarvest: nullableDate, notes: nullableText }),
   livestock: z.object({ farmId: uuid, species: z.enum(["GOAT", "SHEEP", "POULTRY"]), identifier: nullableText, breed: nullableText, quantity: z.coerce.number().int().min(1).max(100000).optional(), birthDate: nullableDate, weightKg: nullableNumber, healthStatus: z.enum(["HEALTHY", "UNDER_TREATMENT", "SICK", "DECEASED"]).optional(), lastVaccinated: nullableDate, notes: nullableText }),
   tasks: z.object({ farmId: uuid.nullable().optional(), title: z.string().trim().min(2).max(160), description: nullableText, category: nullableText, status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "APPROVED"]).optional(), priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(), dueDate: nullableDate, assignedTo: uuid.nullable().optional(), evidenceUrl: z.string().url().nullable().optional() }),
   journal: z.object({ farmId: uuid.nullable().optional(), blockId: uuid.nullable().optional(), title: z.string().trim().min(2).max(160), category: z.string().trim().min(2).max(50).optional(), body: z.string().trim().min(2).max(10000), weather: nullableText, incident: nullableText, cost: z.coerce.number().nonnegative().optional(), photoUrl: z.string().url().nullable().optional(), observedAt: nullableDate }),
@@ -18,7 +17,6 @@ const schemas = {
 };
 
 const config = {
-  crops: { delegate: "cropCycle", entity: "CropCycle", creator: "createdBy", roles: ["OWNER", "MANAGER", "AGRONOMIST"], readRoles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"] },
   livestock: { delegate: "livestock", entity: "Livestock", creator: "createdBy", roles: ["OWNER", "MANAGER"], readRoles: ["OWNER", "MANAGER", "WORKER"] },
   tasks: { delegate: "task", entity: "Task", creator: "createdBy", roles: ["OWNER", "MANAGER"], readRoles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"] },
   journal: { delegate: "journalEntry", entity: "JournalEntry", creator: "authorId", roles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"], readRoles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"] },
