@@ -110,6 +110,8 @@ Implemented in Version 0.6: filtered mobile journal cards/details/editing; opera
 - Asset tracking
 - Reorder alerts
 
+Implemented in Version 0.7: mobile filtered stock cards and linked details; receive/issue history and explained physical-count corrections; exact 3-decimal quantities with atomic no-overdraw and replay-safe browser saves; editable profiles and zero-stock archival; hybrid quantity-based tools versus individual equipment with identification, condition, dated append-only maintenance and permanent retirement. Low-stock batches appear in the list/dashboard and notify owners/managers in their existing Inbox once per low-stock episode. Agronomists retain read-only access; workers have no inventory access. Existing stock/history is preserved; no procurement, external alerts or automatic finance/livestock posting.
+
 ## Version 0.8 - Finance
 
 - Expenses

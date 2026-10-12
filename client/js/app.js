@@ -1,10 +1,11 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.6.0";
-import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.6.0";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.7.0";
+import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.7.0";
 import { offlineStore } from "./offline.js";
-import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.6.0";
-import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.6.0";
-import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.6.0";
-import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.6.0";
+import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.7.0";
+import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.7.0";
+import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.7.0";
+import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.7.0";
+import { configureInventory, renderInventory as renderStockInventory, openInventoryModal as openStockItemModal } from "./inventory.js?v=0.7.0";
 
 const app = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast-root");
@@ -385,65 +386,6 @@ async function renderStructureRecords(page) {
   }));
 }
 
-async function renderInventory() {
-  const [{ data, meta }, farmResponse] = await Promise.all([api.get("/inventory"), api.get("/farms").catch(() => ({ data: [] }))]);
-  farms = farmResponse.data;
-  const canManage = ["OWNER", "MANAGER"].includes(currentUser.role);
-  const lowStock = data.filter((item) => item.quantity <= item.reorderLevel).length;
-  document.querySelector("#content").innerHTML = `
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium text-forest-600">STOCK CONTROL</p><h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Inventory</h1><p class="mt-2 text-sm text-slate-500">${meta.total} items · ${lowStock} at or below reorder level</p></div>${canManage ? `<button id="add-inventory" class="btn-primary">＋ Add inventory item</button>` : ""}</div>
-    ${lowStock ? `<div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><strong>${lowStock} low-stock ${lowStock === 1 ? "item needs" : "items need"} attention.</strong> Review the highlighted items and plan a reorder.</div>` : ""}
-    <section class="card overflow-hidden p-0"><div class="overflow-x-auto"><table class="w-full min-w-[790px] text-left"><thead><tr>${["Item", "Category", "Farm", "On hand", "Reorder at", "Stock movements", "Actions"].map((title) => `<th class="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">${title}</th>`).join("")}</tr></thead><tbody class="divide-y divide-slate-100">${data.length ? data.map((item) => {
-      const isLow = item.quantity <= item.reorderLevel;
-      return `<tr><td class="px-4 py-3"><p class="text-sm font-semibold">${escapeHtml(item.name)}</p><p class="mt-1 text-xs text-slate-400">${escapeHtml(item.sku || "No SKU")}</p></td><td class="px-4 py-3 text-sm capitalize">${escapeHtml(item.category.toLowerCase().replaceAll("_", " "))}</td><td class="px-4 py-3 text-sm">${escapeHtml(item.farm?.name || "All farms")}</td><td class="px-4 py-3 text-sm font-semibold ${isLow ? "text-amber-700" : ""}">${Number(item.quantity).toLocaleString()} ${escapeHtml(item.unit)} ${isLow ? `<span class="ml-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] text-amber-700">Reorder</span>` : ""}</td><td class="px-4 py-3 text-sm">${Number(item.reorderLevel).toLocaleString()} ${escapeHtml(item.unit)}</td><td class="px-4 py-3 text-sm">${item._count.movements}</td><td class="px-4 py-3">${canManage ? `<div class="flex gap-1"><button data-stock="${item.id}" data-stock-type="IN" class="rounded-lg px-2 py-1 text-xs font-semibold text-forest-700 hover:bg-forest-50">Receive</button><button data-stock="${item.id}" data-stock-type="OUT" class="rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">Issue</button></div>` : "—"}</td></tr>`;
-    }).join("") : `<tr><td colspan="7" class="px-5 py-16 text-center"><p class="text-sm font-semibold">No inventory items yet</p><p class="mt-1 text-xs text-slate-400">Add seeds, fertilizer, feed, vaccines, and farm assets to start tracking stock.</p>${canManage ? `<button id="empty-inventory" class="btn-primary mt-4">Add first item</button>` : ""}</td></tr>`}</tbody></table></div></section>`;
-  document.querySelector("#add-inventory")?.addEventListener("click", openInventoryModal);
-  document.querySelector("#empty-inventory")?.addEventListener("click", openInventoryModal);
-  document.querySelectorAll("[data-stock]").forEach((button) => button.addEventListener("click", () => openStockModal(button.dataset.stock, button.dataset.stockType)));
-}
-
-function openInventoryModal() {
-  const root = document.querySelector("#modal-root");
-  root.innerHTML = `<div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 sm:items-center sm:p-5"><div class="w-full max-w-lg rounded-t-3xl bg-white p-6 sm:rounded-2xl"><div class="flex items-center justify-between"><div><p class="text-xs font-semibold uppercase tracking-wider text-forest-600">STOCK CONTROL</p><h2 class="mt-1 text-lg font-semibold">Add inventory item</h2></div><button data-close class="rounded-lg p-2 text-slate-400" aria-label="Close">✕</button></div><form id="inventory-form" class="mt-5 grid gap-4 sm:grid-cols-2"><label class="block sm:col-span-2"><span class="label">Item name</span><input class="field" name="name" required minlength="2" maxlength="120" placeholder="e.g. Hybrid maize seed"></label><label class="block"><span class="label">Category</span><select class="field" name="category" required>${["SEED", "FERTILIZER", "CHEMICAL", "FEED", "VACCINE", "SUPPLEMENT", "ASSET", "OTHER"].map((item) => `<option value="${item}">${item.toLowerCase().replaceAll("_", " ")}</option>`).join("")}</select></label><label class="block"><span class="label">Unit</span><input class="field" name="unit" required maxlength="30" placeholder="bags, kg, litres"></label><label class="block"><span class="label">Opening quantity</span><input class="field" name="quantity" type="number" step="any" min="0" value="0"></label><label class="block"><span class="label">Reorder level</span><input class="field" name="reorderLevel" type="number" step="any" min="0" value="0"></label><label class="block"><span class="label">SKU / reference</span><input class="field" name="sku" maxlength="80"></label><label class="block"><span class="label">Farm (optional)</span><select class="field" name="farmId"><option value="">All farms / central store</option>${farms.map((farm) => `<option value="${farm.id}">${escapeHtml(farm.name)}</option>`).join("")}</select></label><label class="block sm:col-span-2"><span class="label">Notes</span><textarea class="field" name="notes" rows="2"></textarea></label><div class="flex gap-3 sm:col-span-2"><button type="button" data-close class="btn-secondary flex-1">Cancel</button><button class="btn-primary flex-1" type="submit">Save item</button></div></form></div></div>`;
-  root.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => { root.innerHTML = ""; }));
-  root.querySelector("#inventory-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = Object.fromEntries(new FormData(event.currentTarget));
-    for (const field of ["quantity", "reorderLevel"]) form[field] = Number(form[field] || 0);
-    if (!form.farmId) form.farmId = null;
-    if (!form.sku) form.sku = null;
-    if (!form.notes) form.notes = null;
-    try {
-      const response = await api.post("/inventory/items", form);
-      root.innerHTML = "";
-      showToast(response.message);
-      await renderInventory();
-    } catch (error) { showToast(error.message, "error"); }
-  });
-}
-
-function openStockModal(itemId, type) {
-  const root = document.querySelector("#modal-root");
-  const receiving = type === "IN";
-  root.innerHTML = `<div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 sm:items-center sm:p-5"><div class="w-full max-w-md rounded-t-3xl bg-white p-6 sm:rounded-2xl"><div class="flex items-center justify-between"><div><p class="text-xs font-semibold uppercase tracking-wider text-forest-600">INVENTORY MOVEMENT</p><h2 class="mt-1 text-lg font-semibold">${receiving ? "Receive stock" : "Issue stock"}</h2></div><button data-close class="rounded-lg p-2 text-slate-400" aria-label="Close">✕</button></div><form id="stock-form" class="mt-5 space-y-4"><label class="block"><span class="label">Quantity</span><input class="field" name="quantity" type="number" required min="0.001" step="any"></label>${receiving ? `<label class="block"><span class="label">Unit cost (KES, optional)</span><input class="field" name="unitCost" type="number" min="0" step="0.01"></label>` : ""}<label class="block"><span class="label">Reference</span><input class="field" name="reference" maxlength="120" placeholder="Purchase / issue reference"></label><label class="block"><span class="label">Notes</span><textarea class="field" name="notes" rows="2"></textarea></label><div class="flex gap-3"><button type="button" data-close class="btn-secondary flex-1">Cancel</button><button type="submit" class="btn-primary flex-1">${receiving ? "Receive stock" : "Issue stock"}</button></div></form></div></div>`;
-  root.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => { root.innerHTML = ""; }));
-  root.querySelector("#stock-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = Object.fromEntries(new FormData(event.currentTarget));
-    form.type = type;
-    form.quantity = Number(form.quantity);
-    if (form.unitCost) form.unitCost = Number(form.unitCost);
-    else delete form.unitCost;
-    for (const key of ["reference", "notes"]) if (!form[key]) delete form[key];
-    try {
-      const response = await api.post(`/inventory/items/${itemId}/movements`, form);
-      root.innerHTML = "";
-      showToast(response.message);
-      await renderInventory();
-    } catch (error) { showToast(error.message, "error"); }
-  });
-}
-
 async function renderSales() {
   const { data } = await api.get("/sales");
   const canManage = ["OWNER", "MANAGER"].includes(currentUser.role);
@@ -574,7 +516,7 @@ async function startCreate(page) {
   if (page === "inventory") {
     const result = await api.get("/farms").catch(() => ({ data: [] }));
     farms = result.data;
-    openInventoryModal();
+    openStockItemModal();
   } else if (page === "sales") openSaleModal();
   else if (page === "documents") {
     const categories = currentUser.role === "WORKER"
@@ -672,7 +614,7 @@ function openQuickAdd() {
   root.querySelectorAll("[data-quick]").forEach((button) => {
     const page = button.dataset.quick;
     if (config[page]?.roles && !config[page].roles.includes(currentUser.role)) button.remove();
-    else if (["expenses", "sales"].includes(page) && !["OWNER", "MANAGER"].includes(currentUser.role)) button.remove();
+    else if (["expenses", "sales", "inventory"].includes(page) && !["OWNER", "MANAGER"].includes(currentUser.role)) button.remove();
     else button.addEventListener("click", () => { root.innerHTML = ""; startCreate(page); });
   });
 }
@@ -683,7 +625,7 @@ async function renderPage() {
     if (!allowedPages().includes(currentPage)) throw new Error("You do not have access to this page.");
     if (currentPage === "dashboard") await renderDashboard();
     else if (currentPage === "structure") await renderStructure();
-    else if (currentPage === "inventory") await renderInventory();
+    else if (currentPage === "inventory") await renderStockInventory(location.hash.split("/")[1]);
     else if (currentPage === "sales") await renderSales();
     else if (currentPage === "documents") await renderDocuments();
     else if (currentPage === "clients") await renderClients();
@@ -778,6 +720,7 @@ configureReports({ escapeHtml, showToast, loadAll, getUser: () => currentUser })
 configureLivestock({ escapeHtml, showToast, loadAll, navigate });
 configureTasks({ escapeHtml, showToast, loadAll, navigate, getUser: () => currentUser, reload: renderPage });
 configureNotifications({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage });
+configureInventory({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage });
 window.addEventListener("hashchange", async () => {
   if (location.hash.startsWith("#setup/")) {
     currentUser = null;

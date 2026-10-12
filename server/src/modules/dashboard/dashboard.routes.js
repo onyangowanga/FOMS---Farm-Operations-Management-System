@@ -33,7 +33,7 @@ router.get("/", async (req, res, next) => {
         ? prisma.payment.aggregate({ where: { organizationId: org, receivedAt: { gte: monthStart } }, _sum: { amount: true } })
         : Promise.resolve({ _sum: { amount: null } }),
       prisma.inventoryItem.findMany({
-        where: { organizationId: org, deletedAt: null },
+        where: { organizationId: org, deletedAt: null, trackingMode: "BATCH" },
         select: { quantity: true, reorderLevel: true }
       }),
       prisma.cropCycle.count({ where: { ...farmWhere, status: { notIn: ["PLANNED", "HARVESTED", "CANCELLED"] } } }),
@@ -56,7 +56,7 @@ router.get("/", async (req, res, next) => {
         monthlyCollected: Number(payments._sum.amount || 0),
         monthlyProfit: canSeeFinancials ? Number((Number(sales._sum.totalAmount || 0) - Number(expenses._sum.amount || 0)).toFixed(2)) : null,
         monthlySalesCount: sales._count.id,
-        lowStockItems: lowStockItems.filter((item) => item.quantity <= item.reorderLevel).length,
+        lowStockItems: lowStockItems.filter((item) => item.quantity.lte(item.reorderLevel)).length,
         farms
       }
     });

@@ -1,0 +1,54 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import { fixture, request, base } from "./helpers.js";
+import { prisma } from "../server/src/config/database.js";
+
+test("inventory: hybrid assets, append-only maintenance, backdates, replay and permanent retirement", { skip: !base }, async () => {
+  const f = fixture();
+  try {
+    const owner = await f.seed();
+    const worker = await f.seed("WORKER", owner.organizationId);
+    const foreign = await f.seed();
+    assert.equal((await request("/inventory/items")).status, 401);
+    const batch = await request("/inventory/items", "POST", { name: "Ordinary hoes", category: "ASSET", unit: "tools", quantity: 10 }, owner.cookie);
+    assert.equal(batch.status, 201);
+    assert.equal(batch.body.data.trackingMode, "BATCH");
+    assert.equal((await request(`/inventory/items/${batch.body.data.id}/asset-events`, "GET", undefined, owner.cookie)).status, 409);
+    const payload = { name: "Water pump", category: "ASSET", trackingMode: "INDIVIDUAL", sku: "PUMP-001", unit: "unit", quantity: 1, serialNumber: "SN-001" };
+    for (const invalid of [{ ...payload, category: "SEED" }, { ...payload, quantity: 2 }, { ...payload, sku: "" }, { ...payload, reorderLevel: 1 }]) assert.equal((await request("/inventory/items", "POST", invalid, owner.cookie)).status, 400);
+    const asset = await request("/inventory/items", "POST", payload, owner.cookie);
+    assert.equal(asset.status, 201, JSON.stringify(asset.body));
+    const id = asset.body.data.id;
+    const path = `/inventory/items/${id}/asset-events`;
+    assert.equal(asset.body.data.assetCondition, "WORKING");
+    assert.equal(asset.body.data.lowStock, false);
+    assert.equal((await request("/inventory/items", "POST", payload, owner.cookie)).status, 409);
+    assert.equal((await request(`/inventory/items/${id}/movements`, "POST", { type: "OUT", quantity: 1 }, owner.cookie)).status, 409);
+    assert.equal((await request(path, "GET", undefined, foreign.cookie)).status, 404);
+    assert.equal((await request(path, "GET", undefined, worker.cookie)).status, 403);
+    const older = new Date().toISOString();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const next = new Date(Date.now() + 86400000).toISOString();
+    const event = { requestId: crypto.randomUUID(), type: "MAINTENANCE", condition: "NEEDS_REPAIR", notes: "Pump seals inspected", cost: 125.5, observedAt: new Date().toISOString(), nextMaintenanceDate: next };
+    const saved = await request(path, "POST", event, owner.cookie);
+    assert.equal(saved.status, 201, JSON.stringify(saved.body));
+    assert.equal((await request(path, "POST", event, owner.cookie)).body.data.id, saved.body.data.id);
+    assert.equal((await request(path, "POST", { ...event, notes: "Different" }, owner.cookie)).status, 409);
+    assert.equal((await request(path, "POST", { ...event, requestId: crypto.randomUUID(), condition: "WORKING", observedAt: older, notes: "Earlier inspection", nextMaintenanceDate: null }, owner.cookie)).status, 201);
+    const current = (await request(`/inventory/items/${id}`, "GET", undefined, owner.cookie)).body.data;
+    assert.equal(current.assetCondition, "NEEDS_REPAIR");
+    assert.equal(current.nextMaintenanceDate, next);
+    assert.equal((await request(path, "POST", { ...event, requestId: crypto.randomUUID(), observedAt: new Date(Date.now() + 86400000).toISOString() }, owner.cookie)).status, 400);
+    assert.equal((await request(path, "POST", { ...event, requestId: crypto.randomUUID(), condition: "RETIRED", observedAt: older }, owner.cookie)).status, 409);
+    const retire = { requestId: crypto.randomUUID(), type: "CONDITION", condition: "RETIRED", notes: "Uneconomic to repair", observedAt: new Date().toISOString() };
+    assert.equal((await request(path, "POST", retire, owner.cookie)).status, 201);
+    assert.equal((await request(path, "POST", retire, owner.cookie)).status, 201);
+    assert.equal((await request(path, "POST", { ...retire, requestId: crypto.randomUUID(), condition: "WORKING" }, owner.cookie)).status, 409);
+    assert.equal((await request(`/inventory/items/${id}`, "GET", undefined, owner.cookie)).body.data.quantity, 0);
+    assert.equal((await request(path, "GET", undefined, owner.cookie)).body.data.length, 3);
+    assert.equal(await prisma.stockMovement.count({ where: { itemId: id } }), 2);
+    assert.equal((await request(`/inventory/items/${id}`, "DELETE", undefined, owner.cookie)).status, 200);
+    assert.equal(await prisma.inventoryAssetEvent.count({ where: { itemId: id } }), 3);
+  } finally { await f.cleanup(); }
+});

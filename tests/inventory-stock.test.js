@@ -1,0 +1,54 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import { fixture, request, base } from "./helpers.js";
+import { prisma } from "../server/src/config/database.js";
+
+test("inventory: decimal stock, concurrent issues, replay, reconciliation, edit/archive and access", { skip: !base }, async () => {
+  const f = fixture();
+  try {
+    const owner = await f.seed();
+    const manager = await f.seed("MANAGER", owner.organizationId);
+    const agronomist = await f.seed("AGRONOMIST", owner.organizationId);
+    const worker = await f.seed("WORKER", owner.organizationId);
+    const stranger = await f.seed();
+    assert.equal((await request("/inventory")).status, 401);
+    assert.equal((await request("/inventory", "GET", undefined, worker.cookie)).status, 403);
+    const payload = { name: "Decimal maize", category: "SEED", unit: "kg", quantity: 0.3, reorderLevel: 0.1, requestId: crypto.randomUUID() };
+    const created = await request("/inventory/items", "POST", payload, owner.cookie);
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.data.id;
+    assert.equal(created.body.data.quantity, 0.3);
+    assert.equal(created.body.data.lowStock, false);
+    assert.equal((await request("/inventory/items", "POST", payload, owner.cookie)).body.data.id, id);
+    assert.equal((await request(`/inventory/items/${id}`, "GET", undefined, stranger.cookie)).status, 404);
+    assert.equal((await request(`/inventory/items/${id}`, "GET", undefined, agronomist.cookie)).status, 200);
+    assert.equal((await request(`/inventory/items/${id}`, "PATCH", { name: "Denied" }, agronomist.cookie)).status, 403);
+    assert.equal((await request(`/inventory/items/${id}`, "PATCH", { unit: "bags" }, owner.cookie)).status, 409);
+    assert.equal((await request(`/inventory/items/${id}`, "PATCH", { name: "Updated maize" }, manager.cookie)).status, 200);
+    const path = `/inventory/items/${id}/movements`;
+    const issue = { type: "OUT", quantity: 0.1, requestId: crypto.randomUUID() };
+    const issued = await request(path, "POST", issue, owner.cookie);
+    assert.equal(issued.status, 201, JSON.stringify(issued.body));
+    assert.equal(issued.body.data.balanceAfter, 0.2);
+    assert.equal((await request(path, "POST", issue, owner.cookie)).body.data.id, issued.body.data.id);
+    assert.equal((await request(path, "POST", { ...issue, quantity: 0.2 }, owner.cookie)).status, 409);
+    const results = await Promise.all([owner, manager].map((actor) => request(path, "POST", { type: "OUT", quantity: 0.2, requestId: crypto.randomUUID() }, actor.cookie)));
+    assert.deepEqual(results.map((result) => result.status).sort(), [201, 409]);
+    assert.equal((await request(`/inventory/items/${id}`, "GET", undefined, owner.cookie)).body.data.quantity, 0);
+    for (const quantity of [-1, 0, 0.0001, "", "Infinity", 1000000001]) assert.equal((await request(path, "POST", { type: "IN", quantity }, owner.cookie)).status, 400);
+    assert.equal((await request(path, "POST", { type: "ADJUSTMENT", quantity: 1 }, owner.cookie)).status, 400);
+    const counted = { type: "ADJUSTMENT", quantity: 1.125, notes: "Physical stock count", requestId: crypto.randomUUID() };
+    assert.equal((await request(path, "POST", counted, manager.cookie)).body.data.balanceAfter, 1.125);
+    assert.equal((await request(path, "POST", counted, manager.cookie)).status, 201);
+    const history = await request(path, "GET", undefined, owner.cookie);
+    assert.equal(history.body.data.length, 4);
+    assert.equal((await request(`/inventory/items/${id}`, "DELETE", undefined, owner.cookie)).status, 409);
+    const stored = await prisma.inventoryItem.findUnique({ where: { id } });
+    assert.equal(stored.quantity.toString(), "1.125");
+    assert.equal((await request(path, "POST", { type: "ADJUSTMENT", quantity: 0, notes: "All stock used", requestId: crypto.randomUUID() }, manager.cookie)).status, 201);
+    assert.equal((await request(`/inventory/items/${id}`, "DELETE", undefined, owner.cookie)).status, 200);
+    assert.equal((await request(`/inventory/items/${id}`, "GET", undefined, owner.cookie)).status, 404);
+    assert.equal(await prisma.stockMovement.count({ where: { itemId: id } }), 5);
+  } finally { await f.cleanup(); }
+});

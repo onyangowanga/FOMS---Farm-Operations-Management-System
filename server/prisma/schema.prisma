@@ -410,14 +410,16 @@ model Notification {
   id             String       @id @default(uuid()) @db.Uuid
   organizationId String       @db.Uuid
   userId         String       @db.Uuid
-  taskId         String       @db.Uuid
+  taskId         String?      @db.Uuid
+  inventoryItemId String?     @db.Uuid
   type           String
   message        String
   readAt         DateTime?
   createdAt      DateTime     @default(now())
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task           Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  inventoryItem  InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, userId, readAt, createdAt])
 }
@@ -509,8 +511,15 @@ model InventoryItem {
   sku            String?
   category       InventoryCategory
   unit           String
-  quantity       Float             @default(0)
-  reorderLevel   Float             @default(0)
+  quantity       Decimal           @default(0) @db.Decimal(15, 3)
+  reorderLevel   Decimal           @default(0) @db.Decimal(15, 3)
+  trackingMode   String            @default("BATCH")
+  assetCondition String?
+  conditionObservedAt DateTime?
+  serialNumber   String?
+  nextMaintenanceDate DateTime?
+  lowStockAlertActive Boolean      @default(false)
+  creationRequestId String?        @db.Uuid
   notes          String?
   createdBy      String?           @db.Uuid
   createdAt      DateTime          @default(now())
@@ -520,8 +529,11 @@ model InventoryItem {
   farm           Farm?             @relation(fields: [farmId], references: [id], onDelete: SetNull)
   creator        User?             @relation("InventoryItemCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   movements      StockMovement[]
+  assetEvents    InventoryAssetEvent[]
+  notifications Notification[]
 
   @@unique([organizationId, sku])
+  @@unique([organizationId, creationRequestId])
   @@index([organizationId, category, deletedAt])
   @@index([organizationId, quantity, reorderLevel])
 }
@@ -531,7 +543,10 @@ model StockMovement {
   organizationId String            @db.Uuid
   itemId         String            @db.Uuid
   type           StockMovementType
-  quantity       Float
+  quantity       Decimal           @db.Decimal(15, 3)
+  balanceAfter   Decimal?          @db.Decimal(15, 3)
+  requestId      String?           @db.Uuid
+  occurredAt     DateTime          @default(now())
   unitCost       Decimal?          @db.Decimal(12, 2)
   reference      String?
   notes          String?
@@ -542,6 +557,26 @@ model StockMovement {
   creator        User?             @relation("StockMovementCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([organizationId, itemId, createdAt])
+  @@unique([itemId, requestId])
+}
+
+model InventoryAssetEvent {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  itemId         String @db.Uuid
+  requestId      String @db.Uuid
+  type           String
+  condition      String
+  notes          String
+  cost           Decimal? @db.Decimal(12, 2)
+  observedAt     DateTime
+  nextMaintenanceDate DateTime?
+  recordedBy     String @db.Uuid
+  createdAt      DateTime @default(now())
+  item           InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, requestId])
+  @@index([organizationId, itemId, observedAt])
 }
 
 model Buyer {

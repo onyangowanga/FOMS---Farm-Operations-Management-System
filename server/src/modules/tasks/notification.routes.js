@@ -8,7 +8,10 @@ const router = Router();
 router.use(authorize("OWNER", "MANAGER", "AGRONOMIST", "WORKER"));
 const scope = (req) => ({
   organizationId: req.auth.organizationId, userId: req.auth.userId,
-  task: { organizationId: req.auth.organizationId, deletedAt: null, ...(req.auth.role === "WORKER" ? { assignedTo: req.auth.userId } : {}) }
+  OR: [
+    { task: { organizationId: req.auth.organizationId, deletedAt: null, ...(req.auth.role === "WORKER" ? { assignedTo: req.auth.userId } : {}) } },
+    ...(["OWNER", "MANAGER"].includes(req.auth.role) ? [{ inventoryItem: { organizationId: req.auth.organizationId, deletedAt: null } }] : [])
+  ]
 });
 router.get("/", async (req, res, next) => {
   try {

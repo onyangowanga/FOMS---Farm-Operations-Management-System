@@ -1,6 +1,6 @@
-import { api } from "./api.js?v=0.6.0";
-import { field, modal } from "./v03.js?v=0.6.0";
-import { localDateTime } from "./reports.js?v=0.6.0";
+import { api } from "./api.js?v=0.7.0";
+import { field, modal } from "./v03.js?v=0.7.0";
+import { localDateTime } from "./reports.js?v=0.7.0";
 
 let context;
 export function configureLivestock(value) { context = value; }
