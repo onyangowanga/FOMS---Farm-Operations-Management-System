@@ -10,7 +10,7 @@ export function setOfflineIdentity(identity) {
 async function apiRequest(path, options = {}) {
   const method = options.method || "GET";
   if (!navigator.onLine && method === "GET") {
-    if (/^\/(auth|admin|team|notifications)(\/|\?|$)/.test(path)) throw new Error("Reconnect to verify your sign-in, manage accounts and read notifications.");
+    if (/^\/(auth|admin|team|notifications|finance|expenses|sales)(\/|\?|$)/.test(path)) throw new Error("Reconnect to verify your sign-in, financial records, accounts and notifications.");
     const cached = await offlineStore.get(`${offlineCacheScope}:${path}`);
     if (cached !== undefined) return cached;
     throw new Error("You are offline and this information has not been saved on this device yet.");
@@ -27,7 +27,7 @@ async function apiRequest(path, options = {}) {
     });
   } catch (error) {
     if (method !== "GET" && !path.startsWith("/auth/")) {
-      if (options.queueOffline === false || /^\/(admin|team|livestock|tasks|notifications|inventory)(\/|\?|$)/.test(path) || /^\/journal\/[^/?]+\/follow-ups(?:\?|$)/.test(path)) throw new Error("You are offline. Reconnect before managing accounts, livestock, tasks, inventory, notifications, incident follow-ups or uploading files.");
+      if (options.queueOffline === false || /^\/(admin|team|livestock|tasks|notifications|inventory|expenses|sales|finance)(\/|\?|$)/.test(path) || /^\/journal\/[^/?]+\/follow-ups(?:\?|$)/.test(path)) throw new Error("You are offline. Reconnect before managing accounts, livestock, tasks, inventory, finance, notifications, incident follow-ups or uploading files.");
       await offlineStore.enqueue({ path, method, body: options.body, identity: offlineIdentity });
       return { success: true, queued: true, message: "Saved on this device. It will sync when you are back online." };
     }
@@ -44,7 +44,7 @@ async function apiRequest(path, options = {}) {
       : "";
     throw new Error(validation || body.message || "The request could not be completed");
   }
-  if (method === "GET" && !/^\/(auth|admin|team|notifications)(\/|\?|$)/.test(path)) await offlineStore.put(`${offlineCacheScope}:${path}`, body);
+  if (method === "GET" && !/^\/(auth|admin|team|notifications|finance|expenses|sales)(\/|\?|$)/.test(path)) await offlineStore.put(`${offlineCacheScope}:${path}`, body);
   return body;
 }
 
@@ -53,6 +53,7 @@ export async function syncOutbox(identity) {
   let synced = 0;
   for (const operation of await offlineStore.pending()) {
     if (operation.identity !== `${identity.organizationId}:${identity.userId}`) continue;
+    if (/^\/(expenses|sales|finance)(\/|\?|$)/.test(operation.path)) throw new Error("A financial change saved by an older app is awaiting review. It has not been replayed automatically; contact your workspace administrator before recording it again.");
     const response = await fetch(`/api/v1${operation.path}`, {
       method: operation.method,
       credentials: "same-origin",

@@ -2,157 +2,159 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { prisma } from "../../config/database.js";
+import { prisma, lockOrganization } from "../../config/database.js";
 import { authorize } from "../../middleware/authenticate.js";
 import { AppError } from "../../shared/errors.js";
 import { writeAudit } from "../../shared/audit.js";
+import { money, quantity, currency, queryFields, validRange, filters, scope, relatedFarm, replay, requestHash, stripReplay, saleView, saleInclude } from "../finance/finance.shared.js";
 
 const router = Router();
-const buyerSchema = z.object({
-  farmId: z.uuid().nullable().optional(),
-  name: z.string().trim().min(2).max(120),
-  email: z.email().trim().toLowerCase().nullable().optional(),
-  phone: z.string().trim().max(40).nullable().optional(),
-  address: z.string().trim().max(500).nullable().optional()
-});
-const saleSchema = z.object({
-  farmId: z.uuid().nullable().optional(),
-  buyerId: z.uuid().nullable().optional(),
-  buyer: z.object({
-    name: z.string().trim().min(2).max(120),
-    email: z.email().trim().toLowerCase().nullable().optional(),
-    phone: z.string().trim().max(40).nullable().optional()
-  }).optional(),
-  product: z.string().trim().min(2).max(160),
-  quantity: z.coerce.number().finite().positive(),
-  unit: z.string().trim().min(1).max(30),
-  unitPrice: z.coerce.number().finite().positive(),
-  currency: z.string().trim().length(3).toUpperCase().default("KES"),
-  soldAt: z.coerce.date().optional(),
-  dueDate: z.coerce.date().nullable().optional(),
+router.use(authorize("OWNER", "MANAGER"));
+const buyerFields = z.object({
+  name: z.string().trim().min(2).max(120), email: z.email().trim().toLowerCase().nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional()
+}).strict();
+const buyerSchema = buyerFields.extend({ farmId: z.uuid().nullable().optional(), address: z.string().trim().max(500).nullable().optional() });
+const saleFields = z.object({
+  farmId: z.uuid().nullable().optional(), buyerId: z.uuid().nullable().optional(), buyer: buyerFields.optional(),
+  product: z.string().trim().min(2).max(160), quantity, unit: z.string().trim().min(1).max(30), unitPrice: money,
+  currency: currency.optional(), soldAt: z.coerce.date().optional(), dueDate: z.coerce.date().nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional()
-});
+}).strict();
+const createSchema = saleFields.extend({ requestId: z.uuid().optional(), currency: currency.default("KES") });
 const paymentSchema = z.object({
-  amount: z.coerce.number().finite().positive(),
-  method: z.enum(["CASH", "MPESA", "BANK_TRANSFER", "CHEQUE", "OTHER"]),
-  reference: z.string().trim().max(120).optional(),
-  receivedAt: z.coerce.date().optional()
-});
-const orgFarm = (organizationId) => ({ organizationId, deletedAt: null });
-
-router.get("/buyers", authorize("OWNER", "MANAGER"), async (req, res, next) => {
+  requestId: z.uuid().optional(), amount: money, method: z.enum(["CASH", "MPESA", "BANK_TRANSFER", "CHEQUE", "OTHER"]),
+  reference: z.string().trim().max(120).optional(), receivedAt: z.coerce.date().optional()
+}).strict();
+const querySchema = z.object({ ...queryFields, status: z.enum(["PAID", "PARTIAL", "UNPAID", "OVERDUE"]).optional() }).strict().refine(validRange, { message: "Start date must not follow end date" });
+async function find(tx, req) {
+  const record = await tx.sale.findFirst({ where: scope(req, z.uuid().parse(req.params.id)), include: saleInclude });
+  if (!record) throw new AppError(404, "Invoice was not found");
+  return record;
+}
+async function relatedBuyer(tx, req, data) {
+  if (data.buyerId && data.buyer) throw new AppError(400, "Select an existing buyer or enter a new buyer, not both");
+  if (!data.buyerId && !data.buyer) throw new AppError(400, "Select an existing buyer or enter the buyer's details");
+  if (data.buyerId && !await tx.buyer.findFirst({ where: scope(req, data.buyerId) })) throw new AppError(400, "Buyer is not available in this workspace");
+}
+function amounts(data) {
+  const unitPrice = new Prisma.Decimal(data.unitPrice);
+  const totalAmount = unitPrice.mul(data.quantity).toDecimalPlaces(2);
+  if (totalAmount.lte(0) || totalAmount.gt(9999999999.99)) throw new AppError(400, "Invoice total must be between 0.01 and 9,999,999,999.99");
+  if (data.dueDate && data.soldAt && data.dueDate < data.soldAt) throw new AppError(400, "Invoice due date cannot precede the sale date");
+  return { unitPrice, totalAmount };
+}
+router.get("/buyers", async (req, res, next) => {
   try {
-    const buyers = await prisma.buyer.findMany({
-      where: orgFarm(req.auth.organizationId),
-      orderBy: { name: "asc" },
-      include: { farm: { select: { id: true, name: true } }, _count: { select: { sales: true } } }
-    });
-    res.json({ success: true, data: buyers });
-  } catch (error) { next(error); }
-});
-
-router.post("/buyers", authorize("OWNER", "MANAGER"), async (req, res, next) => {
-  try {
-    const payload = buyerSchema.parse(req.body);
-    if (payload.farmId && !(await prisma.farm.findFirst({ where: { id: payload.farmId, ...orgFarm(req.auth.organizationId) }, select: { id: true } }))) {
-      throw new AppError(400, "The selected farm is not available in this workspace");
-    }
-    const buyer = await prisma.buyer.create({
-      data: { ...payload, organizationId: req.auth.organizationId, createdBy: req.auth.userId }
-    });
-    await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "CREATE", entity: "Buyer", entityId: buyer.id });
-    res.status(201).json({ success: true, message: "Buyer created", data: buyer });
-  } catch (error) { next(error); }
-});
-
-router.get("/", authorize("OWNER", "MANAGER"), async (req, res, next) => {
-  try {
-    const sales = await prisma.sale.findMany({
-      where: orgFarm(req.auth.organizationId),
-      orderBy: { soldAt: "desc" },
-      include: {
-        buyer: { select: { id: true, name: true, phone: true, email: true } },
-        farm: { select: { id: true, name: true } },
-        payments: { orderBy: { receivedAt: "desc" } }
-      }
-    });
-    const data = sales.map((sale) => {
-      const totalPaid = sale.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-      const total = Number(sale.totalAmount);
-      return { ...sale, totalPaid: Number(totalPaid.toFixed(2)), balance: Number(Math.max(0, total - totalPaid).toFixed(2)), paymentStatus: totalPaid >= total ? "PAID" : totalPaid > 0 ? "PARTIAL" : "UNPAID" };
-    });
+    const data = await prisma.buyer.findMany({ where: scope(req), orderBy: { name: "asc" }, include: { farm: { select: { id: true, name: true } }, _count: { select: { sales: true } } } });
     res.json({ success: true, data });
   } catch (error) { next(error); }
 });
-
-router.post("/", authorize("OWNER", "MANAGER"), async (req, res, next) => {
+router.post("/buyers", async (req, res, next) => {
   try {
-    const payload = saleSchema.parse(req.body);
-    if (!payload.buyerId && !payload.buyer) throw new AppError(400, "Select an existing buyer or enter the buyer's details");
-    if (payload.farmId && !(await prisma.farm.findFirst({ where: { id: payload.farmId, ...orgFarm(req.auth.organizationId) }, select: { id: true } }))) {
-      throw new AppError(400, "The selected farm is not available in this workspace");
-    }
-    if (payload.buyerId && !(await prisma.buyer.findFirst({ where: { id: payload.buyerId, ...orgFarm(req.auth.organizationId) }, select: { id: true } }))) {
-      throw new AppError(400, "The selected buyer is not available in this workspace");
-    }
-    const unitPrice = new Prisma.Decimal(payload.unitPrice.toFixed(2));
-    const totalAmount = unitPrice.mul(payload.quantity).toDecimalPlaces(2);
-    const invoiceNumber = `FOMS-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-    const sale = await prisma.$transaction(async (tx) => {
-      const buyer = payload.buyerId
-        ? null
-        : await tx.buyer.create({ data: { ...payload.buyer, farmId: payload.farmId, organizationId: req.auth.organizationId, createdBy: req.auth.userId } });
-      return tx.sale.create({
-        data: {
-          organizationId: req.auth.organizationId,
-          farmId: payload.farmId,
-          buyerId: payload.buyerId || buyer.id,
-          invoiceNumber,
-          product: payload.product,
-          quantity: payload.quantity,
-          unit: payload.unit,
-          unitPrice,
-          totalAmount,
-          currency: payload.currency,
-          soldAt: payload.soldAt,
-          dueDate: payload.dueDate,
-          notes: payload.notes,
-          createdBy: req.auth.userId
-        },
-        include: { buyer: true, payments: true }
-      });
+    const payload = buyerSchema.parse(req.body);
+    const data = await prisma.$transaction(async (tx) => {
+      await lockOrganization(tx, req.auth.organizationId);
+      await relatedFarm(tx, req, payload.farmId);
+      const record = await tx.buyer.create({ data: { ...payload, organizationId: req.auth.organizationId, createdBy: req.auth.userId } });
+      await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "CREATE", entity: "Buyer", entityId: record.id }, tx);
+      return record;
     });
-    await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "CREATE", entity: "Sale", entityId: sale.id });
-    res.status(201).json({ success: true, message: `Invoice ${invoiceNumber} created`, data: { ...sale, totalPaid: 0, balance: Number(totalAmount), paymentStatus: "UNPAID" } });
+    res.status(201).json({ success: true, message: "Buyer created", data });
   } catch (error) { next(error); }
 });
-
-router.post("/:id/payments", authorize("OWNER", "MANAGER"), async (req, res, next) => {
+router.get("/", async (req, res, next) => {
   try {
-    const saleId = z.uuid().parse(req.params.id);
+    const query = querySchema.parse(req.query);
+    const records = await prisma.sale.findMany({ where: {
+      ...scope(req), ...filters(query, "soldAt"),
+      ...(query.search ? { OR: [
+        ...["product", "invoiceNumber"].map((key) => ({ [key]: { contains: query.search, mode: "insensitive" } })),
+        { buyer: { name: { contains: query.search, mode: "insensitive" } } }
+      ] } : {})
+    }, include: saleInclude, orderBy: [{ soldAt: "desc" }, { id: "asc" }] });
+    const data = records.map(saleView).filter((record) => !query.status || (query.status === "OVERDUE" ? record.balance > 0 && record.dueDate && record.dueDate < new Date() : record.paymentStatus === query.status));
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+});
+router.get("/:id", async (req, res, next) => {
+  try { res.json({ success: true, data: saleView(await find(prisma, req)) }); }
+  catch (error) { next(error); }
+});
+router.post("/", async (req, res, next) => {
+  try {
+    const payload = createSchema.parse(req.body);
+    const record = await prisma.$transaction(async (tx) => {
+      await lockOrganization(tx, req.auth.organizationId);
+      const existing = await replay(tx, "sale", req, payload, "createdBy", saleInclude);
+      if (existing) return existing;
+      await relatedFarm(tx, req, payload.farmId);
+      await relatedBuyer(tx, req, payload);
+      const totals = amounts({ ...payload, soldAt: payload.soldAt || new Date() });
+      const buyer = payload.buyerId ? null : await tx.buyer.create({ data: { ...payload.buyer, farmId: payload.farmId, organizationId: req.auth.organizationId, createdBy: req.auth.userId } });
+      const { buyer: buyerInput, ...data } = payload;
+      const created = await tx.sale.create({ data: {
+        ...data, ...totals, requestHash: requestHash(payload), buyerId: payload.buyerId || buyer.id,
+        organizationId: req.auth.organizationId, createdBy: req.auth.userId,
+        invoiceNumber: `FOMS-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`
+      }, include: saleInclude });
+      await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "CREATE", entity: "Sale", entityId: created.id }, tx);
+      return created;
+    });
+    res.status(201).json({ success: true, message: `Invoice ${record.invoiceNumber} created`, data: saleView(record) });
+  } catch (error) { next(error); }
+});
+router.patch("/:id", async (req, res, next) => {
+  try {
+    const payload = saleFields.omit({ buyer: true }).partial().parse(req.body);
+    if (!Object.keys(payload).length) throw new AppError(400, "Provide at least one field to update");
+    const record = await prisma.$transaction(async (tx) => {
+      await lockOrganization(tx, req.auth.organizationId);
+      const existing = await find(tx, req);
+      if (existing.payments.length) throw new AppError(409, "Invoices with payments are locked");
+      if (Object.hasOwn(payload, "farmId") && payload.farmId !== existing.farmId) await relatedFarm(tx, req, payload.farmId);
+      if (Object.hasOwn(payload, "buyerId")) await relatedBuyer(tx, req, payload);
+      const updated = await tx.sale.update({ where: { id: existing.id }, data: { ...payload, ...amounts({ ...existing, ...payload }) }, include: saleInclude });
+      await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "UPDATE", entity: "Sale", entityId: existing.id }, tx);
+      return updated;
+    });
+    res.json({ success: true, message: "Unpaid invoice updated", data: saleView(record) });
+  } catch (error) { next(error); }
+});
+router.delete("/:id", async (req, res, next) => {
+  try {
+    await prisma.$transaction(async (tx) => {
+      await lockOrganization(tx, req.auth.organizationId);
+      const record = await find(tx, req);
+      if (record.payments.length) throw new AppError(409, "Invoices with payments cannot be archived");
+      await tx.sale.update({ where: { id: record.id }, data: { deletedAt: new Date() } });
+      await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "ARCHIVE", entity: "Sale", entityId: record.id }, tx);
+    });
+    res.json({ success: true, message: "Unpaid invoice archived; history retained" });
+  } catch (error) { next(error); }
+});
+router.post("/:id/payments", async (req, res, next) => {
+  try {
     const payload = paymentSchema.parse(req.body);
-    const payment = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "Sale" WHERE "id" = ${saleId}::uuid AND "organizationId" = ${req.auth.organizationId}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
-      const sale = await tx.sale.findFirst({ where: { id: saleId, ...orgFarm(req.auth.organizationId) } });
-      if (!sale) throw new AppError(404, "Invoice was not found");
-      const paid = await tx.payment.aggregate({ where: { saleId, organizationId: req.auth.organizationId }, _sum: { amount: true } });
-      const balance = Number(sale.totalAmount) - Number(paid._sum.amount || 0);
-      if (payload.amount > balance + 0.001) throw new AppError(400, `Payment exceeds the outstanding balance of ${sale.currency} ${balance.toFixed(2)}`);
-      return tx.payment.create({
-        data: {
-          organizationId: req.auth.organizationId,
-          saleId,
-          amount: new Prisma.Decimal(payload.amount.toFixed(2)),
-          method: payload.method,
-          reference: payload.reference,
-          receivedAt: payload.receivedAt,
-          recordedBy: req.auth.userId
-        }
-      });
+    const record = await prisma.$transaction(async (tx) => {
+      await lockOrganization(tx, req.auth.organizationId);
+      const sale = await find(tx, req);
+      const existing = await replay(tx, "payment", req, payload, "recordedBy");
+      if (existing) {
+        if (existing.saleId !== sale.id) throw new AppError(409, "Request ID belongs to a different invoice");
+        return existing;
+      }
+      const balance = sale.totalAmount.minus(sale.payments.reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0)));
+      const amount = new Prisma.Decimal(payload.amount);
+      if (amount.gt(balance)) throw new AppError(400, `Payment exceeds the outstanding balance of ${sale.currency} ${balance.toFixed(2)}`);
+      if (payload.receivedAt && payload.receivedAt > new Date()) throw new AppError(400, "Payment receipt cannot be future-dated");
+      const created = await tx.payment.create({ data: {
+        ...payload, requestHash: requestHash(payload), organizationId: req.auth.organizationId, saleId: sale.id, recordedBy: req.auth.userId
+      } });
+      await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "PAYMENT", entity: "Sale", entityId: sale.id }, tx);
+      return created;
     });
-    await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "PAYMENT", entity: "Sale", entityId: saleId });
-    res.status(201).json({ success: true, message: "Payment recorded", data: payment });
+    res.status(201).json({ success: true, message: "Payment recorded", data: stripReplay(record) });
   } catch (error) { next(error); }
 });
-
 export default router;

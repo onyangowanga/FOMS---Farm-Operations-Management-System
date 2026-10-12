@@ -1,18 +1,19 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.7.0";
-import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.7.0";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.8.0";
+import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.8.0";
 import { offlineStore } from "./offline.js";
-import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.7.0";
-import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.7.0";
-import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.7.0";
-import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.7.0";
-import { configureInventory, renderInventory as renderStockInventory, openInventoryModal as openStockItemModal } from "./inventory.js?v=0.7.0";
+import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.8.0";
+import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.8.0";
+import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.8.0";
+import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.8.0";
+import { configureInventory, renderInventory as renderStockInventory, openInventoryModal as openStockItemModal } from "./inventory.js?v=0.8.0";
+import { configureFinance, renderFinance, renderExpenses, renderSales as renderFinanceSales, openSaleModal as openFinanceSaleModal, openExpenseModal } from "./finance.js?v=0.8.0";
 
 const app = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast-root");
 const navGroups = [
   { title: "OVERVIEW", items: [["dashboard", "◫", "Dashboard"], ["structure", "▦", "Farm structure"]] },
   { title: "FARM OPERATIONS", items: [["farms", "⌂", "Farms"], ["blocks", "▦", "Blocks"], ["crops", "❋", "Crops"], ["livestock", "♧", "Livestock"], ["tasks", "☑", "Tasks"], ["journal", "▤", "Daily reports"]] },
-  { title: "MANAGEMENT", items: [["inventory", "▤", "Inventory"], ["sales", "$", "Sales & invoices"], ["expenses", "↗", "Expenses"], ["documents", "▧", "Documents"], ["team", "♙", "Team"], ["account", "⚙", "Account"]] }
+  { title: "MANAGEMENT", items: [["inventory", "▤", "Inventory"], ["finance", "$", "Finance"], ["sales", "$", "Sales & invoices"], ["expenses", "↗", "Expenses"], ["documents", "▧", "Documents"], ["team", "♙", "Team"], ["account", "⚙", "Account"]] }
 ];
 const config = {
   farms: { title: "Farms", singular: "farm", endpoint: "farms", roles: ["OWNER", "MANAGER"], fields: [["name", "Farm name", "text", true], ["location", "Location", "text"], ["acreage", "Total acreage", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["description", "Notes", "textarea"]], columns: [["name", "Farm"], ["location", "Location"], ["acreage", "Acres"], ["latitude", "Latitude"], ["longitude", "Longitude"]] },
@@ -38,7 +39,7 @@ function allowedPages() {
   if (currentUser.role === "FOMS_ADMIN") return ["clients", "account"];
   if (currentUser.role === "WORKER") return ["dashboard", "tasks", "journal", "account"];
   return navGroups.flatMap((group) => group.items.map(([page]) => page)).filter((page) =>
-    (!["expenses", "sales", "team"].includes(page) || ["OWNER", "MANAGER"].includes(currentUser.role)) &&
+    (!["expenses", "sales", "finance", "team"].includes(page) || ["OWNER", "MANAGER"].includes(currentUser.role)) &&
     (page !== "livestock" || currentUser.role !== "AGRONOMIST"));
 }
 
@@ -229,8 +230,8 @@ async function renderDashboard() {
       ${currentUser.role !== "AGRONOMIST" ? metric("Livestock", totalAnimals.toLocaleString(), `${data.livestock.goat || 0} goats · ${data.livestock.sheep || 0} sheep · ${data.livestock.poultry || 0} poultry`, "♧", "bg-sky-50 text-sky-700", "livestock") : ""}
       ${metric("Low stock items", data.lowStockItems, "At or below reorder level", "!", "bg-amber-50 text-amber-700", "inventory")}
       ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Monthly revenue", `KES ${Number(data.monthlyRevenue).toLocaleString()}`, `${data.monthlySalesCount} invoices · ${Number(data.monthlyCollected).toLocaleString()} collected`, "$", "bg-emerald-50 text-emerald-700", "sales") : ""}
-      ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Net profit", `KES ${Number(data.monthlyProfit).toLocaleString()}`, "Revenue less expenses this month", "↗", "bg-sky-50 text-sky-700", "sales") : ""}
-      ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Monthly expenses", `KES ${Number(data.monthlyExpenses).toLocaleString()}`, "Total recorded this month", "↘", "bg-rose-50 text-rose-700", "expenses") : ""}
+      ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Profit (KES)", `KES ${Number(data.monthlyProfit).toLocaleString()}`, "Invoiced less approved expenses", "↗", "bg-sky-50 text-sky-700", "finance") : ""}
+      ${["OWNER", "MANAGER"].includes(currentUser.role) ? metric("Approved expenses", `KES ${Number(data.monthlyExpenses).toLocaleString()}`, `KES ${Number(data.monthlyPendingExpenses).toLocaleString()} pending approval`, "↘", "bg-rose-50 text-rose-700", "expenses") : ""}
     </div>
     <div class="mt-5 grid gap-5 xl:grid-cols-[1.5fr_1fr]">
       <section class="card"><div class="flex items-center justify-between"><div><h2 class="font-semibold text-slate-900">Crop progress</h2><p class="mt-1 text-xs text-slate-400">Your latest crop cycles</p></div><button data-goto="crops" class="text-xs font-semibold text-forest-700 hover:underline">View crops →</button></div>
@@ -386,77 +387,6 @@ async function renderStructureRecords(page) {
   }));
 }
 
-async function renderSales() {
-  const { data } = await api.get("/sales");
-  const canManage = ["OWNER", "MANAGER"].includes(currentUser.role);
-  const totals = data.reduce((sum, sale) => ({ revenue: sum.revenue + Number(sale.totalAmount), collected: sum.collected + sale.totalPaid, outstanding: sum.outstanding + sale.balance }), { revenue: 0, collected: 0, outstanding: 0 });
-  document.querySelector("#content").innerHTML = `
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium text-forest-600">SALES & COLLECTIONS</p><h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Sales & invoices</h1><p class="mt-2 text-sm text-slate-500">Record farm sales, issue invoices, and follow outstanding payments.</p></div>${canManage ? `<button id="new-sale" class="btn-primary">＋ Record a sale</button>` : ""}</div>
-    <div class="mb-5 grid gap-3 sm:grid-cols-3">${metric("Invoiced", `KES ${totals.revenue.toLocaleString()}`, `${data.length} invoices`, "$", "bg-sky-50 text-sky-700")}${metric("Collected", `KES ${totals.collected.toLocaleString()}`, "Payments received", "✓", "bg-forest-50 text-forest-700")}${metric("Outstanding", `KES ${totals.outstanding.toLocaleString()}`, "Open invoice balances", "◷", "bg-amber-50 text-amber-700")}</div>
-    <section class="card overflow-hidden p-0"><div class="overflow-x-auto"><table class="w-full min-w-[900px] text-left"><thead><tr>${["Invoice", "Product", "Buyer", "Date", "Total", "Paid", "Status", "Payment"].map((title) => `<th class="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">${title}</th>`).join("")}</tr></thead><tbody class="divide-y divide-slate-100">${data.length ? data.map((sale) => `<tr><td class="px-4 py-3 text-xs font-semibold text-forest-700">${escapeHtml(sale.invoiceNumber)}</td><td class="px-4 py-3"><p class="text-sm font-medium">${escapeHtml(sale.product)}</p><p class="text-xs text-slate-400">${Number(sale.quantity)} ${escapeHtml(sale.unit)}</p></td><td class="px-4 py-3 text-sm">${escapeHtml(sale.buyer?.name || "Walk-in buyer")}</td><td class="px-4 py-3 text-sm">${new Date(sale.soldAt).toLocaleDateString()}</td><td class="px-4 py-3 text-sm font-semibold">${escapeHtml(sale.currency)} ${Number(sale.totalAmount).toLocaleString()}</td><td class="px-4 py-3 text-sm">${Number(sale.totalPaid).toLocaleString()}</td><td class="px-4 py-3"><span class="rounded-full px-2 py-1 text-[10px] font-semibold ${sale.paymentStatus === "PAID" ? "bg-forest-50 text-forest-700" : sale.paymentStatus === "PARTIAL" ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700"}">${sale.paymentStatus.toLowerCase()}</span></td><td class="px-4 py-3">${canManage && sale.balance > 0 ? `<button data-payment="${sale.id}" data-balance="${sale.balance}" data-currency="${escapeHtml(sale.currency)}" class="rounded-lg px-2 py-1 text-xs font-semibold text-forest-700 hover:bg-forest-50">Record payment</button>` : "—"}</td></tr>`).join("") : `<tr><td colspan="8" class="px-5 py-16 text-center"><p class="text-sm font-semibold">No sales recorded yet</p><p class="mt-1 text-xs text-slate-400">Record a sale to create its invoice and track payments.</p></td></tr>`}</tbody></table></div></section>`;
-  document.querySelector("#new-sale")?.addEventListener("click", openSaleModal);
-  document.querySelectorAll("[data-payment]").forEach((button) => button.addEventListener("click", () => openPaymentModal(button.dataset.payment, Number(button.dataset.balance), button.dataset.currency)));
-}
-
-async function openSaleModal() {
-  const [farmResponse, buyerResponse] = await Promise.all([
-    api.get("/farms").catch(() => ({ data: [] })),
-    api.get("/sales/buyers")
-  ]);
-  farms = farmResponse.data;
-  const buyers = buyerResponse.data;
-  const root = document.querySelector("#modal-root");
-  root.innerHTML = `<div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 sm:items-center sm:p-5"><div class="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white p-6 sm:rounded-2xl"><div class="flex items-center justify-between"><div><p class="text-xs font-semibold uppercase tracking-wider text-forest-600">SALES</p><h2 class="mt-1 text-lg font-semibold">Record a sale</h2></div><button data-close class="rounded-lg p-2 text-slate-400" aria-label="Close">✕</button></div><form id="sale-form" class="mt-5 grid gap-4 sm:grid-cols-2"><label class="block sm:col-span-2"><span class="label">Product / produce</span><input class="field" name="product" required minlength="2" maxlength="160" placeholder="e.g. Fresh eggs"></label><label class="block"><span class="label">Quantity</span><input class="field" name="quantity" type="number" required min="0.001" step="any"></label><label class="block"><span class="label">Unit</span><input class="field" name="unit" required maxlength="30" placeholder="trays, kg, heads"></label><label class="block"><span class="label">Unit price (KES)</span><input class="field" name="unitPrice" type="number" required min="0.01" step="0.01"></label><label class="block"><span class="label">Farm</span><select class="field" name="farmId"><option value="">Not specified</option>${farms.map((farm) => `<option value="${farm.id}">${escapeHtml(farm.name)}</option>`).join("")}</select></label><label class="block sm:col-span-2"><span class="label">Buyer</span><select id="sale-buyer" class="field" name="buyerId"><option value="">Add a new buyer</option>${buyers.map((buyer) => `<option value="${buyer.id}">${escapeHtml(buyer.name)}${buyer.phone ? ` · ${escapeHtml(buyer.phone)}` : ""}</option>`).join("")}</select></label><div id="new-buyer-fields" class="grid gap-4 sm:col-span-2 sm:grid-cols-2"><label class="block"><span class="label">New buyer name</span><input class="field" name="buyerName" required minlength="2" maxlength="120"></label><label class="block"><span class="label">Buyer phone (optional)</span><input class="field" name="buyerPhone" maxlength="40"></label><label class="block sm:col-span-2"><span class="label">Buyer email (optional)</span><input class="field" name="buyerEmail" type="email"></label></div><label class="block"><span class="label">Invoice due date</span><input class="field" name="dueDate" type="date"></label><label class="block sm:col-span-2"><span class="label">Notes</span><textarea class="field" name="notes" rows="2"></textarea></label><div class="flex gap-3 sm:col-span-2"><button type="button" data-close class="btn-secondary flex-1">Cancel</button><button type="submit" class="btn-primary flex-1">Create invoice</button></div></form></div></div>`;
-  root.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => { root.innerHTML = ""; }));
-  const buyerSelect = root.querySelector("#sale-buyer");
-  const buyerFields = root.querySelector("#new-buyer-fields");
-  const buyerName = root.querySelector("[name=buyerName]");
-  buyerSelect.addEventListener("change", () => {
-    const creating = !buyerSelect.value;
-    buyerFields.classList.toggle("hidden", !creating);
-    buyerName.required = creating;
-  });
-  root.querySelector("#sale-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const values = Object.fromEntries(new FormData(event.currentTarget));
-    const payload = {
-      product: values.product,
-      quantity: Number(values.quantity),
-      unit: values.unit,
-      unitPrice: Number(values.unitPrice),
-      ...(values.buyerId
-        ? { buyerId: values.buyerId }
-        : { buyer: { name: values.buyerName, ...(values.buyerPhone ? { phone: values.buyerPhone } : {}), ...(values.buyerEmail ? { email: values.buyerEmail } : {}) } }),
-      ...(values.farmId ? { farmId: values.farmId } : {}),
-      ...(values.dueDate ? { dueDate: values.dueDate } : {}),
-      ...(values.notes ? { notes: values.notes } : {})
-    };
-    try {
-      const response = await api.post("/sales", payload);
-      root.innerHTML = "";
-      showToast(response.message);
-      await renderSales();
-    } catch (error) { showToast(error.message, "error"); }
-  });
-}
-
-function openPaymentModal(saleId, balance, currency) {
-  const root = document.querySelector("#modal-root");
-  root.innerHTML = `<div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 sm:items-center sm:p-5"><div class="w-full max-w-md rounded-t-3xl bg-white p-6 sm:rounded-2xl"><div class="flex items-center justify-between"><div><p class="text-xs font-semibold uppercase tracking-wider text-forest-600">INVOICE PAYMENT</p><h2 class="mt-1 text-lg font-semibold">Record payment</h2></div><button data-close class="rounded-lg p-2 text-slate-400" aria-label="Close">✕</button></div><p class="mt-2 text-sm text-slate-500">Outstanding: ${escapeHtml(currency)} ${balance.toLocaleString()}</p><form id="payment-form" class="mt-5 space-y-4"><label class="block"><span class="label">Amount</span><input class="field" name="amount" type="number" min="0.01" max="${balance}" step="0.01" required></label><label class="block"><span class="label">Payment method</span><select class="field" name="method"><option value="MPESA">M-Pesa</option><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select></label><label class="block"><span class="label">Transaction reference</span><input class="field" name="reference" maxlength="120"></label><div class="flex gap-3"><button type="button" data-close class="btn-secondary flex-1">Cancel</button><button type="submit" class="btn-primary flex-1">Save payment</button></div></form></div></div>`;
-  root.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => { root.innerHTML = ""; }));
-  root.querySelector("#payment-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const values = Object.fromEntries(new FormData(event.currentTarget));
-    const payload = { amount: Number(values.amount), method: values.method, ...(values.reference ? { reference: values.reference } : {}) };
-    try {
-      const response = await api.post(`/sales/${saleId}/payments`, payload);
-      root.innerHTML = "";
-      showToast(response.message);
-      await renderSales();
-    } catch (error) { showToast(error.message, "error"); }
-  });
-}
-
 async function renderDocuments() {
   const { data } = await api.get("/documents");
   const farmResponse = await api.get("/farms").catch(() => ({ data: [] }));
@@ -517,7 +447,8 @@ async function startCreate(page) {
     const result = await api.get("/farms").catch(() => ({ data: [] }));
     farms = result.data;
     openStockItemModal();
-  } else if (page === "sales") openSaleModal();
+  } else if (page === "sales") openFinanceSaleModal();
+  else if (page === "expenses") openExpenseModal();
   else if (page === "documents") {
     const categories = currentUser.role === "WORKER"
       ? ["FARM_PHOTO"]
@@ -626,7 +557,9 @@ async function renderPage() {
     if (currentPage === "dashboard") await renderDashboard();
     else if (currentPage === "structure") await renderStructure();
     else if (currentPage === "inventory") await renderStockInventory(location.hash.split("/")[1]);
-    else if (currentPage === "sales") await renderSales();
+    else if (currentPage === "finance") await renderFinance();
+    else if (currentPage === "expenses") await renderExpenses(location.hash.split("/")[1]);
+    else if (currentPage === "sales") await renderFinanceSales(location.hash.split("/")[1]);
     else if (currentPage === "documents") await renderDocuments();
     else if (currentPage === "clients") await renderClients();
     else if (currentPage === "account") renderAccount();
@@ -669,6 +602,7 @@ function updateConnectivity() {
 
 let connectivityInitialized = false;
 function setupConnectivity() {
+  updateConnectivity();
   if (!connectivityInitialized) {
     window.addEventListener("online", async () => {
       updateConnectivity();
@@ -684,8 +618,10 @@ function setupConnectivity() {
   }
   offlineStore.pending().then((pending) => {
     const indicator = document.querySelector("#sync-indicator");
-    if (indicator && navigator.onLine && pending.length) {
-      indicator.textContent = `${pending.length} waiting to sync`;
+    const identity = currentUser && `${currentUser.organization.id}:${currentUser.user.id}`;
+    const count = pending.filter((operation) => operation.identity === identity).length;
+    if (indicator && navigator.onLine && count) {
+      indicator.textContent = `${count} waiting to sync`;
       indicator.classList.remove("hidden");
     }
   }).catch((error) => console.error("Offline storage unavailable", error));
@@ -721,6 +657,7 @@ configureLivestock({ escapeHtml, showToast, loadAll, navigate });
 configureTasks({ escapeHtml, showToast, loadAll, navigate, getUser: () => currentUser, reload: renderPage });
 configureNotifications({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage });
 configureInventory({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage });
+configureFinance({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage, outboxChanged: setupConnectivity });
 window.addEventListener("hashchange", async () => {
   if (location.hash.startsWith("#setup/")) {
     currentUser = null;

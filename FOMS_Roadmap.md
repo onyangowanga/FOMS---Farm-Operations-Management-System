@@ -119,6 +119,8 @@ Implemented in Version 0.7: mobile filtered stock cards and linked details; rece
 - Profit calculation
 - Financial summaries
 
+Implemented in Version 0.8: mobile expense/invoice details, pending expense editing and private receipts, owner-only approval with approved record locks, precise monetary values and replay-safe invoice/payment saves, no concurrent overpayment, unpaid invoice editing/archiving and paid invoice locks. Finance summarizes farm/date/currency-scoped revenue, approved/pending expenses, approved-basis profit, collections, current invoice balances and category breakdowns without mixing currencies. Dashboard KES profit follows the same approved-only policy. Financial operations require a connection; no refunds/tax/payroll/bank processing or automatic inventory posting. PDF/Excel exports remain V0.9.
+
 ## Version 0.9 - Reporting
 
 - Daily reports

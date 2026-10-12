@@ -17,7 +17,8 @@ import journalRoutes from "./modules/resources/journal.routes.js";
 import livestockRoutes from "./modules/resources/livestock.routes.js";
 import taskRoutes from "./modules/tasks/task.routes.js";
 import notificationRoutes from "./modules/tasks/notification.routes.js";
-import { createResourceRouter } from "./modules/resources/resource.routes.js";
+import financeRoutes from "./modules/finance/finance.routes.js";
+import expenseRoutes from "./modules/finance/expense.routes.js";
 import { createStructureRouter, organizationRouter } from "./modules/resources/structure.routes.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { AppError } from "./shared/errors.js";
@@ -53,6 +54,8 @@ app.use("/api/v1/dashboard", dashboardRoutes);
 app.use("/api/v1/team", teamRoutes);
 app.use("/api/v1/inventory", inventoryRoutes);
 app.use("/api/v1/sales", salesRoutes);
+app.use("/api/v1/finance", financeRoutes);
+app.use("/api/v1/expenses", expenseRoutes);
 app.use("/api/v1/documents", documentsRoutes);
 app.use("/api/v1/organization", organizationRouter);
 app.use("/api/v1/farms", createStructureRouter("farms"));
@@ -62,9 +65,6 @@ app.use("/api/v1/journal", journalRoutes);
 app.use("/api/v1/livestock", livestockRoutes);
 app.use("/api/v1/tasks", taskRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
-for (const [path, name] of Object.entries({ expenses: "expenses" })) {
-  app.use(`/api/v1/${path}`, createResourceRouter(name));
-}
 app.use("/api/v1", (_req, res) => res.status(404).json({ success: false, message: "API endpoint was not found" }));
 app.use(express.static(clientPath, { index: false, maxAge: 0 }));
 app.get("*splat", (_req, res) => res.sendFile(path.join(clientPath, "index.html")));

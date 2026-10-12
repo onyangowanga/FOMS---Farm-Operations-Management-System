@@ -1,0 +1,52 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import { fixture, request, base } from "./helpers.js";
+import { prisma } from "../server/src/config/database.js";
+
+test("finance: precise invoices/payments, safe retries, concurrency, edit locks and tenant isolation", { skip: !base }, async () => {
+  const f = fixture();
+  try {
+    const owner = await f.seed();
+    const manager = await f.seed("MANAGER", owner.organizationId);
+    const worker = await f.seed("WORKER", owner.organizationId);
+    const foreign = await f.seed();
+    assert.equal((await request("/sales")).status, 401);
+    const payload = { product: "Eggs", quantity: 3, unit: "trays", unitPrice: 0.1, buyer: { name: "Local buyer" }, requestId: crypto.randomUUID() };
+    const created = await request("/sales", "POST", payload, owner.cookie);
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.data.id;
+    assert.equal(Number(created.body.data.totalAmount), 0.3);
+    assert.equal((await request("/sales", "POST", payload, owner.cookie)).body.data.id, id);
+    assert.equal(await prisma.buyer.count({ where: { organizationId: owner.organizationId } }), 1);
+    assert.equal((await request("/sales", "POST", { ...payload, product: "Different" }, owner.cookie)).status, 409);
+    for (const unitPrice of [0, -1, 0.001, "", " ", null, 10000000000]) assert.equal((await request("/sales", "POST", { ...payload, requestId: crypto.randomUUID(), unitPrice }, owner.cookie)).status, 400);
+    assert.equal((await request(`/sales/${id}`, "GET", undefined, foreign.cookie)).status, 404);
+    assert.equal((await request(`/sales/${id}`, "GET", undefined, worker.cookie)).status, 403);
+    assert.equal((await request(`/sales/${id}`, "PATCH", { product: "Fresh eggs" }, manager.cookie)).status, 200);
+    assert.equal((await request(`/sales/${id}`, "GET", undefined, owner.cookie)).body.data.product, "Fresh eggs");
+    const path = `/sales/${id}/payments`;
+    const payment = { amount: 0.1, method: "CASH", requestId: crypto.randomUUID() };
+    const recorded = await request(path, "POST", payment, owner.cookie);
+    assert.equal(recorded.status, 201);
+    assert.equal((await request(path, "POST", payment, owner.cookie)).body.data.id, recorded.body.data.id);
+    assert.equal((await request(path, "POST", { ...payment, amount: 0.2 }, owner.cookie)).status, 409);
+    assert.equal((await request(`/sales/${id}`, "PATCH", { unitPrice: 2 }, owner.cookie)).status, 409);
+    assert.equal((await request(`/sales/${id}`, "DELETE", undefined, owner.cookie)).status, 409);
+    assert.equal((await request(path, "POST", { amount: 0.201, method: "CASH" }, owner.cookie)).status, 400);
+    const concurrent = await Promise.all([owner, manager].map((actor) => request(path, "POST", { amount: 0.2, method: "CASH", requestId: crypto.randomUUID() }, actor.cookie)));
+    assert.deepEqual(concurrent.map((value) => value.status).sort(), [201, 400]);
+    const detail = (await request(`/sales/${id}`, "GET", undefined, owner.cookie)).body.data;
+    assert.equal(detail.totalPaid, 0.3);
+    assert.equal(detail.balance, 0);
+    assert.equal(detail.paymentStatus, "PAID");
+    assert.equal(detail.payments.length, 2);
+    assert.equal((await request("/sales?status=PAID", "GET", undefined, owner.cookie)).body.data.length, 1);
+    assert.equal((await request("/sales?status=UNPAID", "GET", undefined, owner.cookie)).body.data.length, 0);
+    const other = await request("/sales", "POST", { ...payload, requestId: crypto.randomUUID(), buyerId: detail.buyer.id, buyer: undefined }, owner.cookie);
+    assert.equal(other.status, 201);
+    assert.equal((await request(`/sales/${other.body.data.id}/payments`, "POST", payment, owner.cookie)).status, 409);
+    assert.equal((await request(`/sales/${other.body.data.id}`, "DELETE", undefined, owner.cookie)).status, 200);
+    assert.equal((await request(`/sales/${other.body.data.id}`, "GET", undefined, owner.cookie)).status, 404);
+  } finally { await f.cleanup(); }
+});
