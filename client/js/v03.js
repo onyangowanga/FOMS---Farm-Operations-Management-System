@@ -1,5 +1,5 @@
-import { api } from "./api.js?v=0.12.0";
-import { suggestCropSchedule } from "./crop-schedule.js?v=0.12.0";
+import { api } from "./api.js?v=0.13.0";
+import { suggestCropSchedule } from "./crop-schedule.js?v=0.13.0";
 
 let context;
 export function configureV03(value) { context = value; }
@@ -139,8 +139,8 @@ export function renderSetup(token) {
 
 export async function renderCrops(id) {
   if (id) return renderCrop(id);
-  const [data, farmRecords, { data: types }] = await Promise.all([context.loadAll("/crops"), context.loadAll("/farms"), api.get("/crops/types")]);
-  content().innerHTML = `<div class="mb-6 flex flex-wrap justify-between gap-3"><div><h1 class="text-2xl font-semibold">Crop management</h1><p class="mt-2 text-sm text-slate-500">Open a crop to monitor its stage, dates, irrigation, fertilizer and harvests.</p></div>${canManageCrops() ? '<div class="flex gap-2"><button id="new-type" class="btn-secondary">Add crop type</button><button id="new-crop" class="btn-primary">Add crop cycle</button></div>' : ""}</div><div class="grid gap-4 md:grid-cols-2">${data.map((crop) => `<a href="#crops/${crop.id}" class="card block text-slate-800 hover:border-forest-500 focus-visible:ring-2 focus-visible:ring-forest-500"><div class="flex justify-between gap-2"><h2 class="font-semibold">${esc(crop.cropName)} ${esc(crop.variety || "")}</h2><span class="text-xs font-semibold text-forest-700">${esc(label(crop.status))}</span></div><p class="mt-2 text-sm text-slate-500">${esc(farmRecords.find((farm) => farm.id === crop.farmId)?.name || "Farm")} · ${crop.acreage ?? "Area not set"} acres</p><p class="mt-2 text-xs text-slate-500">Planting: ${date(crop.plantingDate)} · Expected harvest: ${date(crop.expectedHarvest)}</p></a>`).join("") || '<p class="card">No crop cycles yet.</p>'}</div><section class="card mt-6"><h2 class="font-semibold">Crop master data</h2><p class="mt-1 text-xs text-slate-500">Defaults are copied into new cycles; changing a type does not alter existing cycles.</p><div class="mt-3 space-y-2">${types.map((type) => `<div class="flex items-center justify-between gap-3"><p class="text-sm">${esc(type.name)} · ${type.requiresNursery ? `Nursery: ${type.nurseryDays} days` : "Direct planting"} · Field maturity: ${type.maturityDays ?? "not set"} days</p>${canManageCrops() ? `<button data-type-edit="${type.id}" class="btn-secondary">Edit</button>` : ""}</div>`).join("") || '<p class="text-sm text-slate-500">No crop types saved.</p>'}</div></section>`;
+  const [data, farmRecords, blockRecords, { data: types }] = await Promise.all([context.loadAll("/crops"), context.loadAll("/farms"), context.loadAll("/blocks"), api.get("/crops/types")]);
+  content().innerHTML = `<div class="mb-6 flex flex-wrap justify-between gap-3"><div><h1 class="text-2xl font-semibold">Crop management</h1><p class="mt-2 text-sm text-slate-500">Open a crop to monitor its stage, dates, irrigation, fertilizer and harvests.</p></div>${canManageCrops() ? '<div class="flex gap-2"><button id="new-type" class="btn-secondary">Add crop type</button><button id="new-crop" class="btn-primary">Add crop cycle</button></div>' : ""}</div><div class="grid gap-4 md:grid-cols-2">${data.map((crop) => `<a href="#crops/${crop.id}" class="card block text-slate-800 hover:border-forest-500 focus-visible:ring-2 focus-visible:ring-forest-500"><div class="flex justify-between gap-2"><h2 class="font-semibold">${esc(crop.cropName)} ${esc(crop.variety || "")}</h2><span class="text-xs font-semibold text-forest-700">${esc(label(crop.status))}</span></div><p class="mt-2 text-sm text-slate-500">${esc(farmRecords.find((farm) => farm.id === crop.farmId)?.name || "Farm")} · ${esc(blockRecords.find((block) => block.id === crop.blockId)?.name || "No block")} · ${crop.bedCount ? `${crop.bedCount} beds` : "Beds not set"}</p><p class="mt-2 text-xs text-slate-500">Planting: ${date(crop.plantingDate)} · Expected harvest: ${date(crop.expectedHarvest)}</p></a>`).join("") || '<p class="card">No crop cycles yet.</p>'}</div><section class="card mt-6"><h2 class="font-semibold">Crop master data</h2><p class="mt-1 text-xs text-slate-500">Defaults are copied into new cycles; changing a type does not alter existing cycles.</p><div class="mt-3 space-y-2">${types.map((type) => `<div class="flex items-center justify-between gap-3"><p class="text-sm">${esc(type.name)} · ${type.requiresNursery ? `Nursery: ${type.nurseryDays} days` : "Direct planting"} · Field maturity: ${type.maturityDays ?? "not set"} days</p>${canManageCrops() ? `<button data-type-edit="${type.id}" class="btn-secondary">Edit</button>` : ""}</div>`).join("") || '<p class="text-sm text-slate-500">No crop types saved.</p>'}</div></section>`;
   document.querySelector("#new-crop")?.addEventListener("click", () => openCropModal());
   document.querySelector("#new-type")?.addEventListener("click", () => openTypeModal());
   content().querySelectorAll("[data-type-edit]").forEach((button) => { button.onclick = () => openTypeModal(types.find((type) => type.id === button.dataset.typeEdit)); });
@@ -161,14 +161,21 @@ function openTypeModal(type = {}) {
 
 export async function openCropModal(crop = {}) {
   try {
-    const [farms, blocks, { data: types }] = await Promise.all([context.loadAll("/farms"), context.loadAll("/blocks"), api.get("/crops/types")]);
+    const [farms, blocks, crops, { data: types }] = await Promise.all([context.loadAll("/farms"), context.loadAll("/blocks"), context.loadAll("/crops"), api.get("/crops/types")]);
+    const inactive = ["HARVESTED", "CANCELLED"];
+    const freeBeds = (blockId) => {
+      const block = blocks.find((item) => item.id === blockId);
+      if (!block?.bedCount) return null;
+      const used = crops.filter((item) => item.blockId === blockId && item.id !== crop.id && !inactive.includes(item.status)).reduce((sum, item) => sum + (item.bedCount || 0), 0);
+      return { total: block.bedCount, free: Math.max(block.bedCount - used, 0) };
+    };
     const form = modal(crop.id ? "Edit crop cycle" : "Add crop cycle",
       `<div class="grid gap-4 sm:grid-cols-2">` +
       field("farmId", "Farm", "select", crop.farmId, { required: true, items: [["", "Select farm"], ...farms.map((farm) => [farm.id, farm.name])] }) +
       field("blockId", "Block / plot", "select", crop.blockId, { items: [["", "No block"], ...blocks.filter((block) => block.farmId === crop.farmId).map((block) => [block.id, block.name])] }) +
       field("cropTypeId", "Crop type defaults (optional)", "select", crop.cropTypeId, { items: [["", "Custom crop"], ...types.map((type) => [type.id, type.name])] }) +
       field("cropName", "Crop name", "text", crop.cropName, { required: true }) +
-      field("variety", "Variety", "text", crop.variety) + field("acreage", "Area (acres)", "number", crop.acreage) +
+      field("variety", "Variety", "text", crop.variety) + field("bedCount", "Number of beds", "number", crop.bedCount) + '<p data-beds class="text-xs text-slate-500 sm:col-span-2"></p>' +
       field("requiresNursery", "Requires nursery?", "select", String(crop.requiresNursery ?? false), { items: [["false", "No - direct planting"], ["true", "Yes - nursery then transplant"]] }) +
       field("nurseryDays", "Nursery duration (days)", "number", crop.nurseryDays) +
       field("nurseryDate", "Nursery sowing date", "date", day(crop.nurseryDate)) +
@@ -180,13 +187,30 @@ export async function openCropModal(crop = {}) {
       field("notes", "Notes", "textarea", crop.notes) + '</div><p data-schedule class="text-xs text-forest-700"></p><p class="text-xs text-slate-500">Dates are plans/observations, not automatic stage changes. New cycles start as planned.</p>',
       (payload) => {
         payload.requiresNursery = payload.requiresNursery === "true";
-        for (const key of ["nurseryDays", "yieldingDays", "acreage", "expectedYield"]) payload[key] = payload[key] === "" ? null : Number(payload[key]);
+        for (const key of ["nurseryDays", "yieldingDays", "bedCount", "expectedYield"]) payload[key] = payload[key] === "" ? null : Number(payload[key]);
         for (const key of ["blockId", "cropTypeId", "nurseryDate", "plantingDate", "transplantDate", "expectedHarvest"]) if (!payload[key]) payload[key] = null;
         return crop.id ? api.patch(`/crops/${crop.id}`, payload) : api.post("/crops", payload);
       });
     form.elements.farmId.onchange = () => {
       form.elements.blockId.innerHTML = `<option value="">No block</option>${blocks.filter((block) => block.farmId === form.elements.farmId.value).map((block) => `<option value="${block.id}">${esc(block.name)}</option>`).join("")}`;
+      bedHint();
     };
+    function bedHint() {
+      const info = freeBeds(form.elements.blockId.value);
+      const hint = form.querySelector("[data-beds]");
+      form.elements.bedCount.step = "1";
+      form.elements.bedCount.min = "1";
+      form.elements.bedCount.removeAttribute("max");
+      if (!info) { hint.className = "text-xs text-slate-500 sm:col-span-2"; hint.textContent = form.elements.blockId.value ? "This block has no bed count set, so bed capacity is not checked." : "Select a block to see available beds."; return; }
+      form.elements.bedCount.max = String(info.free);
+      const wanted = Number(form.elements.bedCount.value || 0);
+      hint.className = `text-xs sm:col-span-2 ${wanted > info.free ? "text-red-700" : "text-forest-700"}`;
+      hint.textContent = `${info.free} of ${info.total} beds free on this block.${wanted > info.free ? " Reduce the number of beds." : ""}`;
+    }
+    form.elements.blockId.addEventListener("change", bedHint);
+    form.elements.bedCount.addEventListener("input", bedHint);
+    if (!crop.id && !crop.farmId) form.elements.farmId.onchange();
+    else bedHint();
     let autoPlanting = !crop.plantingDate;
     let autoHarvest = !crop.expectedHarvest;
     function schedule() {
@@ -231,7 +255,7 @@ async function renderCrop(id) {
     sum.set(unit, (sum.get(unit) || 0) + record.quantity);
     return sum;
   }, new Map())];
-  content().innerHTML = `<a href="#crops" class="text-sm font-semibold">Back to crops</a><div class="my-5 flex flex-wrap justify-between gap-3"><div><h1 class="text-2xl font-semibold">${esc(crop.cropName)} ${esc(crop.variety || "")}</h1><p class="mt-2 text-sm text-slate-500">${esc(farms.find((farm) => farm.id === crop.farmId)?.name)} · ${esc(blocks.find((block) => block.id === crop.blockId)?.name || "No block")} · ${esc(label(crop.status))}</p></div>${canManageCrops() ? '<div class="flex flex-wrap gap-2"><button id="edit-crop" class="btn-secondary">Edit details</button><button id="change-stage" class="btn-primary">Change stage</button><button id="crop-activity" class="btn-secondary">Record activity</button><button id="archive-crop" class="btn-secondary">Archive</button></div>' : ""}</div>
+  content().innerHTML = `<a href="#crops" class="text-sm font-semibold">Back to crops</a><div class="my-5 flex flex-wrap justify-between gap-3"><div><h1 class="text-2xl font-semibold">${esc(crop.cropName)} ${esc(crop.variety || "")}</h1><p class="mt-2 text-sm text-slate-500">${esc(farms.find((farm) => farm.id === crop.farmId)?.name)} · ${esc(blocks.find((block) => block.id === crop.blockId)?.name || "No block")} · ${crop.bedCount ? `${crop.bedCount} beds` : "Beds not set"} · ${esc(label(crop.status))}</p></div>${canManageCrops() ? '<div class="flex flex-wrap gap-2"><button id="edit-crop" class="btn-secondary">Edit details</button><button id="change-stage" class="btn-primary">Change stage</button><button id="crop-activity" class="btn-secondary">Record activity</button><button id="archive-crop" class="btn-secondary">Archive</button></div>' : ""}</div>
     <div class="grid gap-4 sm:grid-cols-2"><section class="card"><h2 class="font-semibold">Schedule & monitoring</h2><dl class="mt-4 space-y-2 text-sm">
       <div>Nursery sowing: ${date(crop.nurseryDate)}</div><div>Nursery duration: ${crop.requiresNursery ? `${crop.nurseryDays} days` : "Not required"}</div><div>Suggested transplant: ${date(nurseryEnd)}</div>
       ${crop.status === "NURSERY" && nurseryDaysLeft !== null ? `<div class="font-semibold ${nurseryDaysLeft <= 0 ? "text-amber-700" : "text-forest-700"}">${nurseryDaysLeft <= 0 ? "Nursery period reached - review readiness for transplanting." : `${nurseryDaysLeft} days until the suggested transplant date.`}</div>` : ""}

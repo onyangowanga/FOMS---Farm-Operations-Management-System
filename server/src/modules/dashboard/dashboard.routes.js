@@ -22,7 +22,7 @@ router.get("/", async (req, res, next) => {
     const [farms, blocks, crops, livestock, tasks, expenses, sales, payments, lowStockItems, activeCropCount, cropCount, pendingExpenses] = await Promise.all([
       prisma.farm.findMany({ where: farmWhere, select: { id: true, name: true, acreage: true, location: true }, orderBy: { createdAt: "asc" } }),
       prisma.block.count({ where: farmWhere }),
-      prisma.cropCycle.findMany({ where: farmWhere, select: { id: true, cropName: true, status: true, acreage: true, expectedHarvest: true }, orderBy: { createdAt: "desc" }, take: 5 }),
+      prisma.cropCycle.findMany({ where: farmWhere, select: { id: true, cropName: true, status: true, acreage: true, bedCount: true, expectedHarvest: true, block: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 5 }),
       prisma.livestock.groupBy({ by: ["species"], where: { ...farmWhere, farm: { deletedAt: null }, healthStatus: { not: "DECEASED" } }, _sum: { quantity: true }, _count: { id: true } }),
       prisma.task.groupBy({ by: ["status"], where: farmWhere, _count: { id: true } }),
       canSeeFinancials

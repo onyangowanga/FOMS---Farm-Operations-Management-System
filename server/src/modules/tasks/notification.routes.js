@@ -10,7 +10,8 @@ const scope = (req) => ({
   organizationId: req.auth.organizationId, userId: req.auth.userId,
   OR: [
     { task: { organizationId: req.auth.organizationId, deletedAt: null, ...(req.auth.role === "WORKER" ? { assignedTo: req.auth.userId } : {}) } },
-    ...(["OWNER", "MANAGER"].includes(req.auth.role) ? [{ inventoryItem: { organizationId: req.auth.organizationId, deletedAt: null } }] : [])
+    ...(["OWNER", "MANAGER"].includes(req.auth.role) ? [{ inventoryItem: { organizationId: req.auth.organizationId, deletedAt: null } }] : []),
+    ...(req.auth.role !== "WORKER" ? [{ visit: { organizationId: req.auth.organizationId } }] : [])
   ]
 });
 router.get("/", async (req, res, next) => {

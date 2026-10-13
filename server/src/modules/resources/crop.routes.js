@@ -4,7 +4,7 @@ import { prisma, lockOrganization } from "../../config/database.js";
 import { authorize } from "../../middleware/authenticate.js";
 import { AppError } from "../../shared/errors.js";
 import { writeAudit } from "../../shared/audit.js";
-import { cropSchema, cropTypeSchema, stageSchema, activitySchema, validateCropDates } from "./crop.validation.js";
+import { cropSchema, cropTypeSchema, stageSchema, activitySchema, validateCropDates, activeCropStages } from "./crop.validation.js";
 
 const router = Router();
 const manage = authorize("OWNER", "MANAGER", "AGRONOMIST");
@@ -18,6 +18,19 @@ async function related(tx, org, payload) {
   if (!await tx.farm.findFirst({ where: { id: payload.farmId, organizationId: org, deletedAt: null } })) throw new AppError(400, "Selected farm is unavailable");
   if (payload.blockId && !await tx.block.findFirst({ where: { id: payload.blockId, farmId: payload.farmId, organizationId: org, deletedAt: null } })) throw new AppError(400, "Selected block does not belong to this farm");
   if (payload.cropTypeId && !await tx.cropType.findFirst({ where: { id: payload.cropTypeId, organizationId: org } })) throw new AppError(400, "Selected crop type is unavailable");
+}
+async function checkBedCapacity(tx, org, crop, excludeId) {
+  if (!crop.blockId || !crop.bedCount || !activeCropStages.includes(crop.status || "PLANNED")) return;
+  const block = await tx.block.findFirst({ where: { id: crop.blockId, organizationId: org, deletedAt: null }, select: { name: true, bedCount: true } });
+  if (!block || block.bedCount == null) return;
+  const used = await tx.cropCycle.aggregate({
+    where: { blockId: crop.blockId, organizationId: org, deletedAt: null, status: { in: activeCropStages }, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    _sum: { bedCount: true }
+  });
+  const inUse = used._sum.bedCount || 0;
+  if (inUse + crop.bedCount > block.bedCount) {
+    throw new AppError(409, `${block.name} has ${block.bedCount} beds; ${inUse} already in use, so only ${Math.max(block.bedCount - inUse, 0)} remain available.`);
+  }
 }
 async function audit(tx, req, action, id, entity = "CropCycle") {
   await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action, entity, entityId: id }, tx);
@@ -73,6 +86,7 @@ router.post("/", manage, async (req, res, next) => {
     const data = await prisma.$transaction(async (tx) => {
       await lockOrganization(tx, req.auth.organizationId);
       await related(tx, req.auth.organizationId, payload);
+      await checkBedCapacity(tx, req.auth.organizationId, payload);
       const crop = await tx.cropCycle.create({ data: { ...payload, organizationId: req.auth.organizationId, createdBy: req.auth.userId } });
       await tx.cropStage.create({ data: { cropId: crop.id, stage: crop.status, recordedBy: req.auth.userId, notes: "Cycle created" } });
       await audit(tx, req, "CREATE", crop.id);
@@ -101,6 +115,7 @@ router.patch("/:id", manage, async (req, res, next) => {
       const merged = { ...crop, ...payload };
       validateCropDates(merged);
       await related(tx, req.auth.organizationId, merged);
+      if ("bedCount" in payload || "blockId" in payload) await checkBedCapacity(tx, req.auth.organizationId, merged, crop.id);
       const result = await tx.cropCycle.update({ where: { id: crop.id }, data: payload });
       await audit(tx, req, "UPDATE", crop.id);
       return result;
@@ -117,6 +132,7 @@ router.post("/:id/stages", manage, async (req, res, next) => {
       const crop = await findCrop(tx, req);
       if (crop.status === payload.stage) throw new AppError(409, "Crop is already in this stage");
       validateCropDates({ ...crop, status: payload.stage });
+      if (!activeCropStages.includes(crop.status)) await checkBedCapacity(tx, req.auth.organizationId, { ...crop, status: payload.stage }, crop.id);
       const latest = await tx.cropStage.findFirst({ where: { cropId: crop.id }, orderBy: { occurredAt: "desc" } });
       if (latest && payload.occurredAt < latest.occurredAt) throw new AppError(400, "Stage observation must not precede the latest stage record");
       const record = await tx.cropStage.create({ data: { ...payload, cropId: crop.id, recordedBy: req.auth.userId } });

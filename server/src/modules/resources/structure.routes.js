@@ -5,6 +5,7 @@ import { authorize } from "../../middleware/authenticate.js";
 import { AppError } from "../../shared/errors.js";
 import { writeAudit } from "../../shared/audit.js";
 import { farmSchema, blockSchema, validateCoordinates } from "./structure.validation.js";
+import { activeCropStages } from "./crop.validation.js";
 
 async function audit(tx, req, action, entity, entityId) {
   await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action, entity, entityId }, tx);
@@ -83,6 +84,11 @@ export function createStructureRouter(kind) {
           if (payload.farmId && payload.farmId !== existing.farmId) {
             throw new AppError(409, "A block cannot be moved to another farm. Create a new block there instead.");
           }
+          if (payload.bedCount != null) {
+            const used = await tx.cropCycle.aggregate({ where: { blockId: id, deletedAt: null, status: { in: activeCropStages } }, _sum: { bedCount: true } });
+            const inUse = used._sum.bedCount || 0;
+            if (payload.bedCount < inUse) throw new AppError(409, `This block has ${inUse} beds in use by active crops; the bed count cannot be lower than that.`);
+          }
         }
         const record = await tx[delegate].update({ where: { id }, data: payload });
         await audit(tx, req, "UPDATE", entity, id);
@@ -130,16 +136,25 @@ organizationRouter.get("/", async (req, res, next) => {
         farms: {
           where: { deletedAt: null }, orderBy: [{ name: "asc" }, { id: "asc" }],
           select: {
-            id: true, name: true, location: true, acreage: true, latitude: true, longitude: true,
+            id: true, name: true, location: true, acreage: true, latitude: true, longitude: true, description: true,
             blocks: {
               where: { deletedAt: null }, orderBy: [{ name: "asc" }, { id: "asc" }],
-              select: { id: true, name: true, acreage: true, latitude: true, longitude: true, currentUse: true, soilType: true }
+              select: {
+                id: true, name: true, acreage: true, widthMeters: true, bedCount: true, driplineCount: true,
+                latitude: true, longitude: true, currentUse: true, soilType: true,
+                cropCycles: { where: { deletedAt: null, status: { in: activeCropStages } }, select: { id: true, cropName: true, variety: true, bedCount: true, status: true } }
+              }
             }
           }
         }
       }
     });
     if (!organization) throw new AppError(404, "Workspace was not found");
+    for (const farm of organization.farms) for (const block of farm.blocks) {
+      block.activeCrops = block.cropCycles;
+      block.bedsInUse = block.cropCycles.reduce((sum, crop) => sum + (crop.bedCount || 0), 0);
+      delete block.cropCycles;
+    }
     res.json({ success: true, data: organization });
   } catch (error) { next(error); }
 });

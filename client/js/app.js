@@ -1,27 +1,28 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.12.0";
-import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.12.0";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.13.0";
+import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.13.0";
 import { offlineStore } from "./offline.js";
 import { initPasswordToggle } from "./password-toggle.js";
-import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.12.0";
-import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.12.0";
-import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.12.0";
-import { mountBoard } from "./board.js?v=0.12.0";
-import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.12.0";
-import { configureInventory, renderInventory as renderStockInventory, openInventoryModal as openStockItemModal } from "./inventory.js?v=0.12.0";
-import { configureFinance, renderFinance, renderExpenses, renderSales as renderFinanceSales, openSaleModal as openFinanceSaleModal, openExpenseModal } from "./finance.js?v=0.12.0";
-import { configureReporting, renderReporting } from "./reporting.js?v=0.12.0";
+import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.13.0";
+import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.13.0";
+import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.13.0";
+import { mountBoard } from "./board.js?v=0.13.0";
+import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.13.0";
+import { configureInventory, renderInventory as renderStockInventory, openInventoryModal as openStockItemModal } from "./inventory.js?v=0.13.0";
+import { configureFinance, renderFinance, renderExpenses, renderSales as renderFinanceSales, openSaleModal as openFinanceSaleModal, openExpenseModal } from "./finance.js?v=0.13.0";
+import { configureReporting, renderReporting } from "./reporting.js?v=0.13.0";
+import { configureVisits, renderVisits } from "./visits.js?v=0.13.0";
 
 const app = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast-root");
 const navGroups = [
   { title: "OVERVIEW", items: [["dashboard", "◫", "Dashboard"]] },
-  { title: "FARM OPERATIONS", items: [["farms", "⌂", "Farms & blocks"],  ["crops", "❋", "Crops"], ["livestock", "♧", "Livestock"], ["tasks", "☑", "Tasks"], ["journal", "▤", "Daily reports"]] },
+  { title: "FARM OPERATIONS", items: [["farms", "⌂", "Farms & blocks"],  ["crops", "❋", "Crops"], ["livestock", "♧", "Livestock"], ["tasks", "☑", "Tasks"], ["visits", "◷", "Agronomist visits"], ["journal", "▤", "Daily reports"]] },
   { title: "REPORTING", items: [["operations-reports", "▤", "Operations reports"], ["financial-reports", "$", "Financial reports"]] },
   { title: "MANAGEMENT", items: [["inventory", "▤", "Inventory"], ["finance", "$", "Finance"], ["sales", "$", "Sales & invoices"], ["expenses", "↗", "Expenses"], ["documents", "▧", "Documents"], ["team", "♙", "Team"], ["account", "⚙", "Account"]] }
 ];
 const config = {
   farms: { title: "Farms", singular: "farm", endpoint: "farms", roles: ["OWNER", "MANAGER"], fields: [["name", "Farm name", "text", true], ["location", "Location", "text"], ["acreage", "Total acreage", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["description", "Notes", "textarea"]], columns: [["name", "Farm"], ["location", "Location"], ["acreage", "Acres"], ["latitude", "Latitude"], ["longitude", "Longitude"]] },
-  blocks: { title: "Farm blocks", singular: "block", endpoint: "blocks", roles: ["OWNER", "MANAGER"], fields: [["farmId", "Farm", "farm", true], ["name", "Block name", "text", true], ["widthMeters", "Block width (m)", "number"], ["bedCount", "Number of beds", "number"], ["driplineCount", "Driplines installed", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["currentUse", "Current use", "text"], ["soilType", "Soil type", "text"]], columns: [["name", "Block"], ["farmId", "Farm"], ["widthMeters", "Width (m)"], ["bedCount", "Beds"], ["driplineCount", "Driplines"], ["currentUse", "Current use"], ["soilType", "Soil type"]] },
+  blocks: { title: "Farm blocks", singular: "block", endpoint: "blocks", roles: ["OWNER", "MANAGER"], fields: [["farmId", "Farm", "farm", true], ["name", "Block name", "text", true], ["widthMeters", "Block width (m)", "number"], ["bedCount", "Number of beds", "number"], ["driplineCount", "Driplines per bed", "number"], ["latitude", "Latitude", "number"], ["longitude", "Longitude", "number"], ["currentUse", "Current use", "text"], ["soilType", "Soil type", "text"]], columns: [["name", "Block"], ["farmId", "Farm"], ["widthMeters", "Width (m)"], ["bedCount", "Beds"], ["driplineCount", "Driplines/bed"], ["currentUse", "Current use"], ["soilType", "Soil type"]] },
   crops: { title: "Crop management", singular: "crop cycle", endpoint: "crops", roles: ["OWNER", "MANAGER", "AGRONOMIST"] },
   livestock: { title: "Livestock", singular: "livestock record", endpoint: "livestock", roles: ["OWNER", "MANAGER"] },
   tasks: { title: "Tasks", singular: "task", endpoint: "tasks", roles: ["OWNER", "MANAGER"] },
@@ -243,7 +244,7 @@ async function renderDashboard() {
     </div>
     <div class="mt-5 grid gap-5 xl:grid-cols-[1.5fr_1fr]">
       <section class="card"><div class="flex items-center justify-between"><div><h2 class="font-semibold text-slate-900">Crop progress</h2><p class="mt-1 text-xs text-slate-400">Your latest crop cycles</p></div><button data-goto="crops" class="text-xs font-semibold text-forest-700 hover:underline">View crops →</button></div>
-        ${data.crops.length ? `<div class="mt-5 divide-y divide-slate-100">${data.crops.map((crop) => `<a href="#crops/${crop.id}" class="flex items-center gap-3 rounded-lg py-3 text-slate-800 hover:bg-forest-50 focus-visible:ring-2 focus-visible:ring-forest-500"><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-forest-50 text-forest-600">❋</div><div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${escapeHtml(crop.cropName)}</p><p class="mt-1 text-xs text-slate-400">${crop.acreage ? `${crop.acreage} acres` : "Area not set"}${crop.expectedHarvest ? ` · Harvest ${new Date(crop.expectedHarvest).toLocaleDateString()}` : ""}</p></div><span class="rounded-full bg-forest-50 px-2.5 py-1 text-[11px] font-semibold text-forest-700">${escapeHtml(crop.status.toLowerCase().replaceAll("_", " "))}</span></a>`).join("")}</div>` : `<div class="py-12 text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-forest-50 text-forest-600">❋</div><p class="mt-4 text-sm font-semibold">No crop cycles yet</p><p class="mt-1 text-xs text-slate-400">Add your first crop record to start tracking progress.</p>${["OWNER", "MANAGER", "AGRONOMIST"].includes(currentUser.role) ? '<button data-create="crops" class="btn-secondary mt-4">Add a crop</button>' : ""}</div>`}
+        ${data.crops.length ? `<div class="mt-5 divide-y divide-slate-100">${data.crops.map((crop) => `<a href="#crops/${crop.id}" class="flex items-center gap-3 rounded-lg py-3 text-slate-800 hover:bg-forest-50 focus-visible:ring-2 focus-visible:ring-forest-500"><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-forest-50 text-forest-600">❋</div><div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">${escapeHtml(crop.cropName)}</p><p class="mt-1 text-xs text-slate-400">${[crop.block?.name, crop.bedCount ? `${crop.bedCount} beds` : ""].filter(Boolean).map(escapeHtml).join(" · ") || "Beds not set"}${crop.expectedHarvest ? ` · Harvest ${new Date(crop.expectedHarvest).toLocaleDateString()}` : ""}</p></div><span class="rounded-full bg-forest-50 px-2.5 py-1 text-[11px] font-semibold text-forest-700">${escapeHtml(crop.status.toLowerCase().replaceAll("_", " "))}</span></a>`).join("")}</div>` : `<div class="py-12 text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-forest-50 text-forest-600">❋</div><p class="mt-4 text-sm font-semibold">No crop cycles yet</p><p class="mt-1 text-xs text-slate-400">Add your first crop record to start tracking progress.</p>${["OWNER", "MANAGER", "AGRONOMIST"].includes(currentUser.role) ? '<button data-create="crops" class="btn-secondary mt-4">Add a crop</button>' : ""}</div>`}
       </section>
       <section class="card"><div class="flex items-center justify-between"><div><h2 class="font-semibold text-slate-900">Tasks at a glance</h2><p class="mt-1 text-xs text-slate-400">Work across your farm</p></div><button data-goto="tasks" class="text-xs font-semibold text-forest-700 hover:underline">View tasks →</button></div>
         <div class="mt-5 space-y-3">${[["pending", "Pending", "bg-amber-400"], ["inProgress", "In progress", "bg-sky-500"], ["completed", "Completed", "bg-forest-500"], ["approved", "Approved", "bg-violet-500"]].map(([key, title, color]) => `<div class="flex items-center gap-3"><span class="h-2 w-2 rounded-full ${color}"></span><span class="flex-1 text-sm text-slate-600">${title}</span><span class="text-sm font-semibold">${data.tasks[key]}</span></div>`).join("")}</div>
@@ -332,20 +333,56 @@ function gpsMarkup(record) {
   return `${escapeHtml(record.latitude)}, ${escapeHtml(record.longitude)}`;
 }
 
-async function renderStructure() {
+function structureStats(farm) {
+  const sum = (pick) => farm.blocks.reduce((total, block) => total + (Number(pick(block)) || 0), 0);
+  return {
+    beds: sum((block) => block.bedCount), inUse: sum((block) => block.bedsInUse),
+    driplines: sum((block) => (block.bedCount || 0) * (block.driplineCount || 0)),
+    crops: farm.blocks.reduce((total, block) => total + (block.activeCrops?.length || 0), 0)
+  };
+}
+
+function structureStat(label, value) {
+  return `<div class="rounded-xl bg-slate-50 px-3 py-2"><p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">${label}</p><p class="mt-1 text-sm font-semibold text-slate-800">${value}</p></div>`;
+}
+
+async function renderStructure(farmId) {
   const { data } = await api.get("/organization");
   const canManage = ["OWNER", "MANAGER"].includes(currentUser.role);
   const content = document.querySelector("#content");
-  content.innerHTML = `
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium text-forest-600">ORGANIZATION / FARMS / BLOCKS</p><h1 class="mt-1 text-2xl font-semibold">${escapeHtml(data.name)}</h1><p class="mt-2 text-sm text-slate-500">${data.farms.length} farms · ${data.farms.reduce((count, farm) => count + farm.blocks.length, 0)} blocks / plots</p></div>${canManage ? '<button id="structure-add-farm" class="btn-primary">Add farm</button>' : ""}</div>
-    <p class="mb-4 text-xs text-slate-400">A map view of farms and blocks is planned for a future release.</p>
-    ${currentUser.role === "OWNER" ? `<form id="organization-form" class="card mb-5 flex flex-wrap items-end gap-3"><label class="flex-1"><span class="label">Organization name</span><input class="field" name="name" value="${escapeHtml(data.name)}" required minlength="2" maxlength="120"></label><button class="btn-secondary" type="submit">Save workspace name</button></form>` : ""}
-    <div class="space-y-5">${data.farms.length ? data.farms.map((farm) => `
-      <section class="card"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-semibold">${escapeHtml(farm.name)}</h2><p class="mt-1 text-sm text-slate-500">${escapeHtml(farm.location || "Location not set")} · ${farm.acreage == null ? "Area not set" : `${escapeHtml(farm.acreage)} acres`}</p><p class="mt-2 text-xs text-slate-500">GPS: ${gpsMarkup(farm)}</p></div>${canManage ? `<div class="flex gap-2"><button data-edit-farm="${farm.id}" class="btn-secondary">Edit farm</button><button data-archive-farm="${farm.id}" class="btn-secondary">Archive</button></div>` : ""}</div>
-      <div class="mt-4 space-y-2">${farm.blocks.length ? farm.blocks.map((block) => `<div class="rounded-xl border border-slate-100 p-3"><p class="text-sm font-semibold">${escapeHtml(block.name)}</p><p class="mt-1 text-xs text-slate-500">${block.widthMeters == null ? "Width not set" : `${escapeHtml(block.widthMeters)} m wide`} · ${block.bedCount ?? "–"} beds · ${block.driplineCount ?? "–"} driplines · ${escapeHtml(block.currentUse || "Use not set")}</p><p class="mt-1 text-xs text-slate-500">GPS: ${gpsMarkup(block)}</p>${canManage ? `<div class="mt-2 flex gap-2"><button data-edit-block="${block.id}" class="btn-secondary">Edit</button><button data-archive-block="${block.id}" class="btn-secondary">Archive</button></div>` : ""}</div>`).join("") : '<p class="text-sm text-slate-400">No blocks / plots yet.</p>'}</div>
-      ${canManage ? `<button data-add-block="${farm.id}" class="btn-primary mt-4">Add block / plot</button>` : ""}</section>`).join("") : '<section class="card text-sm text-slate-500">Add your first farm to begin building your farm hierarchy.</section>'}</div>`;
-  content.querySelector("#structure-add-farm")?.addEventListener("click", () => openRecordModal("farms"));
   const find = (id) => { for (const farm of data.farms) { if (farm.id === id) return { ...farm }; const block = farm.blocks.find((item) => item.id === id); if (block) return { ...block, farmId: farm.id }; } };
+  const selected = farmId && data.farms.find((farm) => farm.id === farmId);
+  if (farmId && !selected) {
+    showToast("That farm is no longer available.", "error");
+    history.replaceState(null, "", "#farms");
+  }
+  if (selected) {
+    const stats = structureStats(selected);
+    content.innerHTML = `
+      <a href="#farms" class="text-sm font-semibold text-forest-700 hover:underline">← All farms</a>
+      <div class="mb-6 mt-3 flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium text-forest-600">FARM DETAILS</p><h1 class="mt-1 text-2xl font-semibold">${escapeHtml(selected.name)}</h1><p class="mt-2 text-sm text-slate-500">${escapeHtml(selected.location || "Location not set")} · ${selected.acreage == null ? "Area not set" : `${escapeHtml(selected.acreage)} acres`} · GPS: ${gpsMarkup(selected)}</p>${selected.description ? `<p class="mt-2 max-w-2xl text-sm text-slate-600">${escapeHtml(selected.description)}</p>` : ""}</div>
+        ${canManage ? `<div class="flex flex-wrap gap-2"><button data-edit-farm="${selected.id}" class="btn-secondary">Edit farm</button><button data-archive-farm="${selected.id}" class="btn-secondary">Archive</button><button data-add-block="${selected.id}" class="btn-primary">Add block / plot</button></div>` : ""}</div>
+      <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">${structureStat("Blocks", selected.blocks.length)}${structureStat("Total beds", stats.beds.toLocaleString())}${structureStat("Beds in use", `${stats.inUse.toLocaleString()} / ${stats.beds.toLocaleString()}`)}${structureStat("Total driplines", stats.driplines.toLocaleString())}</div>
+      <div class="grid gap-4 lg:grid-cols-2">${selected.blocks.length ? selected.blocks.map((block) => {
+        const free = block.bedCount == null ? null : Math.max(block.bedCount - (block.bedsInUse || 0), 0);
+        return `<section class="card"><div class="flex flex-wrap items-start justify-between gap-2"><div><h2 class="font-semibold">${escapeHtml(block.name)}</h2><p class="mt-1 text-xs text-slate-500">${escapeHtml(block.currentUse || "Use not set")}${block.soilType ? ` · ${escapeHtml(block.soilType)} soil` : ""}</p></div>${canManage ? `<div class="flex gap-2"><button data-edit-block="${block.id}" class="btn-secondary">Edit</button><button data-archive-block="${block.id}" class="btn-secondary">Archive</button></div>` : ""}</div>
+          <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">${structureStat("Width", block.widthMeters == null ? "Not set" : `${escapeHtml(block.widthMeters)} m`)}${structureStat("Beds", block.bedCount ?? "Not set")}${structureStat("Driplines per bed", block.driplineCount ?? "Not set")}${structureStat("Total driplines", block.bedCount != null && block.driplineCount != null ? (block.bedCount * block.driplineCount).toLocaleString() : "—")}${structureStat("Beds in use", block.bedsInUse || 0)}${structureStat("Beds free", free ?? "—")}</div>
+          <p class="mt-3 text-xs text-slate-500">GPS: ${gpsMarkup(block)}</p>
+          <div class="mt-3 border-t border-slate-100 pt-3"><p class="text-xs font-semibold text-slate-500">Active crops</p>${block.activeCrops?.length ? `<ul class="mt-2 space-y-1">${block.activeCrops.map((crop) => `<li><a href="#crops/${crop.id}" class="flex justify-between gap-2 rounded-lg px-2 py-1 text-sm text-slate-700 hover:bg-forest-50"><span>${escapeHtml(crop.cropName)}${crop.variety ? ` · ${escapeHtml(crop.variety)}` : ""}</span><span class="text-xs text-slate-500">${crop.bedCount ? `${crop.bedCount} beds` : "beds not set"}</span></a></li>`).join("")}</ul>` : '<p class="mt-1 text-sm text-slate-400">No active crops on this block.</p>'}</div></section>`;
+      }).join("") : '<section class="card text-sm text-slate-500">No blocks / plots yet.</section>'}</div>`;
+  } else {
+    content.innerHTML = `
+      <div class="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium text-forest-600">ORGANIZATION / FARMS / BLOCKS</p><h1 class="mt-1 text-2xl font-semibold">${escapeHtml(data.name)}</h1><p class="mt-2 text-sm text-slate-500">${data.farms.length} farms · ${data.farms.reduce((count, farm) => count + farm.blocks.length, 0)} blocks / plots · select a farm for full details</p></div>${canManage ? '<button id="structure-add-farm" class="btn-primary">Add farm</button>' : ""}</div>
+      ${currentUser.role === "OWNER" ? `<form id="organization-form" class="card mb-5 flex flex-wrap items-end gap-3"><label class="flex-1"><span class="label">Organization name</span><input class="field" name="name" value="${escapeHtml(data.name)}" required minlength="2" maxlength="120"></label><button class="btn-secondary" type="submit">Save workspace name</button></form>` : ""}
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">${data.farms.length ? data.farms.map((farm) => {
+        const stats = structureStats(farm);
+        return `<a href="#farms/${farm.id}" class="card block text-slate-800 transition hover:border-forest-500 focus-visible:ring-2 focus-visible:ring-forest-500"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><h2 class="truncate text-lg font-semibold">${escapeHtml(farm.name)}</h2><p class="mt-1 truncate text-sm text-slate-500">${escapeHtml(farm.location || "Location not set")} · ${farm.acreage == null ? "Area not set" : `${escapeHtml(farm.acreage)} acres`}</p></div><span class="text-forest-700" aria-hidden="true">→</span></div>
+          <div class="mt-4 grid grid-cols-3 gap-2">${structureStat("Blocks", farm.blocks.length)}${structureStat("Beds", stats.beds.toLocaleString())}${structureStat("In use", stats.inUse.toLocaleString())}</div>
+          <p class="mt-3 text-xs text-slate-500">${stats.crops} active ${stats.crops === 1 ? "crop" : "crops"} · ${stats.driplines.toLocaleString()} driplines</p></a>`;
+      }).join("") : '<section class="card text-sm text-slate-500">Add your first farm to begin building your farm hierarchy.</section>'}</div>
+      <p class="mt-4 text-xs text-slate-400">A map view of farms and blocks is planned for a future release.</p>`;
+  }
+  content.querySelector("#structure-add-farm")?.addEventListener("click", () => openRecordModal("farms"));
   content.querySelectorAll("[data-edit-farm]").forEach((button) => button.addEventListener("click", () => openRecordModal("farms", find(button.dataset.editFarm))));
   content.querySelectorAll("[data-edit-block]").forEach((button) => button.addEventListener("click", () => openRecordModal("blocks", find(button.dataset.editBlock))));
   content.querySelectorAll("[data-archive-farm],[data-archive-block]").forEach((button) => button.addEventListener("click", async () => {
@@ -354,6 +391,7 @@ async function renderStructure() {
     try {
       const response = await api.delete(`/${kind}/${button.dataset.archiveFarm || button.dataset.archiveBlock}`);
       showToast(response.message);
+      if (kind === "farms") history.replaceState(null, "", "#farms");
       await renderPage();
     } catch (error) { showToast(error.message, "error"); }
   }));
@@ -541,7 +579,8 @@ async function renderPage() {
   try {
     if (!allowedPages().includes(currentPage)) throw new Error("You do not have access to this page.");
     if (currentPage === "dashboard") await renderDashboard();
-    else if (currentPage === "farms") await renderStructure();
+    else if (currentPage === "farms") await renderStructure(location.hash.split("/")[1]);
+    else if (currentPage === "visits") await renderVisits();
     else if (currentPage === "inventory") await renderStockInventory(location.hash.split("/")[1]);
     else if (currentPage === "finance") await renderFinance();
     else if (currentPage === "operations-reports") await renderReporting("operations");
@@ -648,6 +687,7 @@ configureNotifications({ escapeHtml, showToast, loadAll, getUser: () => currentU
 configureInventory({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage });
 configureFinance({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage, outboxChanged: setupConnectivity });
 configureReporting({ escapeHtml, showToast, loadAll, getUser: () => currentUser });
+configureVisits({ escapeHtml, showToast, loadAll, getUser: () => currentUser, reload: renderPage });
 window.addEventListener("hashchange", async () => {
   if (location.hash.startsWith("#setup/")) {
     currentUser = null;

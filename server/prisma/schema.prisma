@@ -93,6 +93,7 @@ model Organization {
   cropTypes   CropType[]
   notifications Notification[]
   dailyBoard  DailyBoard?
+  farmVisits  FarmVisit[]
 }
 
 model DailyBoard {
@@ -139,6 +140,7 @@ model User {
   uploadedDocuments Document[] @relation("DocumentUploader")
   auditEntries   AuditLog[]
   notifications Notification[]
+  agronomistVisits FarmVisit[] @relation("VisitAgronomist")
 }
 
 model Membership {
@@ -202,6 +204,7 @@ model Farm {
   buyers         Buyer[]
   sales          Sale[]
   documents      Document[]
+  visits         FarmVisit[]
 
   @@index([organizationId, deletedAt])
 }
@@ -241,6 +244,7 @@ model CropCycle {
   variety        String?
   status         String       @default("PLANNED")
   acreage        Float?
+  bedCount       Int?
   expectedYield  Float?
   nurseryDate    DateTime?
   plantingDate   DateTime?
@@ -437,8 +441,37 @@ model Notification {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   task           Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
   inventoryItem  InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  visitId        String?      @db.Uuid
+  visit          FarmVisit?   @relation(fields: [visitId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, userId, readAt, createdAt])
+}
+
+model FarmVisit {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  farmId         String?      @db.Uuid
+  agronomistId   String       @db.Uuid
+  scheduledFor   DateTime
+  status         String       @default("SCHEDULED")
+  source         String       @default("AGRONOMIST")
+  purpose        String?
+  findings       String?
+  cancelReason   String?
+  requestedBy    String?      @db.Uuid
+  completedAt    DateTime?
+  completedBy    String?      @db.Uuid
+  reminderSentAt DateTime?
+  overdueSentAt  DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm           Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  agronomist     User         @relation("VisitAgronomist", fields: [agronomistId], references: [id], onDelete: Cascade)
+  notifications  Notification[]
+
+  @@index([organizationId, status, scheduledFor])
+  @@index([agronomistId, status, scheduledFor])
 }
 
 model JournalEntry {

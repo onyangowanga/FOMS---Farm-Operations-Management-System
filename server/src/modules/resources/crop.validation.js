@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AppError } from "../../shared/errors.js";
 
 export const cropStages = ["PLANNED", "NURSERY", "TRANSPLANTED", "GROWING", "FLOWERING", "FRUITING", "READY_TO_HARVEST", "HARVESTED", "CANCELLED"];
+export const activeCropStages = cropStages.filter((stage) => !["HARVESTED", "CANCELLED"].includes(stage));
 const text = z.string().trim().max(2000).nullable().optional();
 const date = z.coerce.date().nullable().optional();
 const number = z.number().finite().nonnegative().nullable().optional();
@@ -14,7 +15,7 @@ export const cropTypeSchema = z.object({
 export const cropSchema = z.object({
   farmId: z.uuid(), blockId: z.uuid().nullable().optional(), cropTypeId: z.uuid().nullable().optional(),
   cropName: z.string().trim().min(1).max(120), variety: text,
-  status: z.enum(cropStages).optional(), acreage: number, expectedYield: number,
+  status: z.enum(cropStages).optional(), acreage: number, bedCount: z.number().int().min(1).max(100000).nullable().optional(), expectedYield: number,
   requiresNursery: z.boolean().optional(), nurseryDays: z.number().int().min(1).max(730).nullable().optional(),
   yieldingDays: z.number().int().min(1).max(3650).nullable().optional(),
   nurseryDate: date, plantingDate: date, transplantDate: date, expectedHarvest: date, notes: text

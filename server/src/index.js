@@ -1,6 +1,7 @@
 import "dotenv/config";
 import app from "./app.js";
 import { prisma } from "./config/database.js";
+import { startVisitReminderJob } from "./modules/visits/visit.routes.js";
 
 const required = ["DATABASE_URL", "JWT_ACCESS_SECRET"];
 const missing = required.filter((key) => !process.env[key]);
@@ -15,6 +16,7 @@ if (process.env.JWT_ACCESS_SECRET.length < 32) {
 
 const port = Number.parseInt(process.env.PORT || "3000", 10);
 const server = app.listen(port, () => console.log(`FOMS listening on port ${port}`));
+startVisitReminderJob();
 
 async function shutdown(signal) {
   console.log(`${signal} received; shutting down`);
