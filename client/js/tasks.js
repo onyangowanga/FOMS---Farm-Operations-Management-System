@@ -1,6 +1,6 @@
-import { api } from "./api.js?v=0.9.0";
-import { field, modal } from "./v03.js?v=0.9.0";
-import { localDateTime } from "./reports.js?v=0.9.0";
+import { api } from "./api.js?v=0.10.0";
+import { field, modal } from "./v03.js?v=0.10.0";
+import { localDateTime } from "./reports.js?v=0.10.0";
 
 let context;
 export function configureTasks(value) { context = value; }

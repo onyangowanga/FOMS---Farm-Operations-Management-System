@@ -78,7 +78,7 @@ router.post("/login", async (req, res, next) => {
         throw new AppError(401, "Username or password is incorrect");
       }
       return { user, membership };
-    });
+    }, { timeout: 20_000 });
     const organizationId = user.isPlatformAdmin ? null : membership.organizationId;
     setAccessCookie(user.id, organizationId, res, user.sessionVersion, user.mustChangePassword);
     if (user.mustChangePassword) res.clearCookie("refreshToken", cookieOptions);

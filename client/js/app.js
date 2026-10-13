@@ -1,13 +1,13 @@
-import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.9.0";
-import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.9.0";
+import { api, setOfflineIdentity, syncOutbox } from "./api.js?v=0.10.0";
+import { configureV03, renderClients, renderTeam as renderWorkspaceTeam, renderAccount, renderSetup, renderCrops, openCropModal } from "./v03.js?v=0.10.0";
 import { offlineStore } from "./offline.js";
-import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.9.0";
-import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.9.0";
-import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.9.0";
-import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.9.0";
-import { configureInventory, renderInventory as renderStockInventory, openInventoryModal as openStockItemModal } from "./inventory.js?v=0.9.0";
-import { configureFinance, renderFinance, renderExpenses, renderSales as renderFinanceSales, openSaleModal as openFinanceSaleModal, openExpenseModal } from "./finance.js?v=0.9.0";
-import { configureReporting, renderReporting } from "./reporting.js?v=0.9.0";
+import { configureReports, renderReports, openDailyReport } from "./reports.js?v=0.10.0";
+import { configureLivestock, renderLivestock, openLivestockModal } from "./livestock.js?v=0.10.0";
+import { configureTasks, renderTasks, openTaskModal } from "./tasks.js?v=0.10.0";
+import { configureNotifications, attachNotifications, refreshNotifications } from "./notifications.js?v=0.10.0";
+import { configureInventory, renderInventory as renderStockInventory, openInventoryModal as openStockItemModal } from "./inventory.js?v=0.10.0";
+import { configureFinance, renderFinance, renderExpenses, renderSales as renderFinanceSales, openSaleModal as openFinanceSaleModal, openExpenseModal } from "./finance.js?v=0.10.0";
+import { configureReporting, renderReporting } from "./reporting.js?v=0.10.0";
 
 const app = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast-root");
@@ -24,7 +24,7 @@ const config = {
   livestock: { title: "Livestock", singular: "livestock record", endpoint: "livestock", roles: ["OWNER", "MANAGER"] },
   tasks: { title: "Tasks", singular: "task", endpoint: "tasks", roles: ["OWNER", "MANAGER"] },
   journal: { title: "Daily reports", singular: "daily report", endpoint: "journal", roles: ["OWNER", "MANAGER", "AGRONOMIST", "WORKER"] },
-  expenses: { title: "Expenses", singular: "expense", endpoint: "expenses", roles: ["OWNER", "MANAGER"], fields: [["description", "Description", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "select", true, ["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"]], ["amount", "Amount (KES)", "number", true], ["supplier", "Supplier", "text"], ["expenseDate", "Date", "date"], ["paymentMethod", "Payment method", "text"], ["notes", "Notes", "textarea"]], columns: [["description", "Expense"], ["category", "Category"], ["supplier", "Supplier"], ["amount", "Amount"], ["expenseDate", "Date"], ["approvedAt", "Approval"]] }
+  expenses: { title: "Expenses", singular: "expense", endpoint: "expenses", roles: ["OWNER", "MANAGER"], fields: [["description", "Description", "text", true], ["farmId", "Farm", "farm"], ["category", "Category", "select", true, ["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "LIVESTOCK", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"]], ["amount", "Amount (KES)", "number", true], ["supplier", "Supplier", "text"], ["expenseDate", "Date", "date"], ["paymentMethod", "Payment method", "text"], ["notes", "Notes", "textarea"]], columns: [["description", "Expense"], ["category", "Category"], ["supplier", "Supplier"], ["amount", "Amount"], ["expenseDate", "Date"], ["approvedAt", "Approval"]] }
 };
 
 let currentUser;

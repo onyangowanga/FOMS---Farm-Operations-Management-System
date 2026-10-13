@@ -9,7 +9,7 @@ const nullableText = z.string().trim().max(2000).nullable().optional();
 const nullableDate = z.coerce.date().nullable().optional();
 const uuid = z.uuid();
 const schemas = {
-  expenses: z.object({ farmId: uuid.nullable().optional(), description: z.string().trim().min(2).max(200), category: z.enum(["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"]), supplier: nullableText, amount: z.coerce.number().positive(), currency: z.string().trim().length(3).toUpperCase().optional(), paymentMethod: nullableText, expenseDate: nullableDate, notes: nullableText })
+  expenses: z.object({ farmId: uuid.nullable().optional(), description: z.string().trim().min(2).max(200), category: z.enum(["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "LIVESTOCK", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"]), supplier: nullableText, amount: z.coerce.number().positive(), currency: z.string().trim().length(3).toUpperCase().optional(), paymentMethod: nullableText, expenseDate: nullableDate, notes: nullableText })
 };
 
 const config = {

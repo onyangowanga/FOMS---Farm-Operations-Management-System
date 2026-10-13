@@ -10,7 +10,7 @@ import { currency, money, queryFields, validRange, filters, scope, relatedFarm, 
 
 const router = Router();
 router.use(authorize("OWNER", "MANAGER"));
-const categories = ["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"];
+const categories = ["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "LIVESTOCK", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"];
 const text = z.string().trim().max(2000).nullable().optional();
 const fields = z.object({
   farmId: z.uuid().nullable().optional(), description: z.string().trim().min(2).max(200),
@@ -73,6 +73,9 @@ router.patch("/:id", async (req, res, next) => {
       await lockOrganization(tx, req.auth.organizationId);
       const existing = await find(tx, req);
       editable(existing);
+      if (existing.livestockEventId && ["farmId", "category", "expenseDate"].some((field) => payload[field] !== undefined)) {
+        throw new AppError(409, "Farm, category and date are fixed by the linked livestock purchase event");
+      }
       if (Object.hasOwn(payload, "farmId") && payload.farmId !== existing.farmId) await relatedFarm(tx, req, payload.farmId);
       const updated = await tx.expense.update({ where: { id: existing.id }, data: payload, include });
       await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "UPDATE", entity: "Expense", entityId: existing.id }, tx);
@@ -101,6 +104,7 @@ router.delete("/:id", async (req, res, next) => {
       await lockOrganization(tx, req.auth.organizationId);
       const record = await find(tx, req);
       editable(record);
+      if (record.livestockEventId) throw new AppError(409, "This expense is linked to an immutable livestock purchase event and cannot be archived");
       await tx.expense.update({ where: { id: record.id }, data: { deletedAt: new Date() } });
       await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "ARCHIVE", entity: "Expense", entityId: record.id }, tx);
     });

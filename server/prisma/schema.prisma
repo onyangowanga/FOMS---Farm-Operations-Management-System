@@ -342,6 +342,8 @@ model LivestockEvent {
   recordedBy     String    @db.Uuid
   createdAt      DateTime  @default(now())
   livestock      Livestock @relation(fields: [livestockId], references: [id], onDelete: Cascade)
+  purchaseExpense Expense?
+  saleInvoice    Sale?
 
   @@index([livestockId, occurredAt, id])
 }
@@ -499,10 +501,12 @@ model Expense {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
+  livestockEventId String?    @unique @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   farm           Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
   creator        User?        @relation("ExpenseCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   attachments    ExpenseAttachment[]
+  livestockEvent LivestockEvent? @relation(fields: [livestockEventId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, requestId])
   @@index([organizationId, expenseDate, deletedAt])
@@ -641,11 +645,13 @@ model Sale {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
+  livestockEventId String?    @unique @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   farm           Farm?        @relation(fields: [farmId], references: [id], onDelete: SetNull)
   buyer          Buyer?       @relation(fields: [buyerId], references: [id], onDelete: SetNull)
   creator        User?        @relation("SaleCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   payments       Payment[]
+  livestockEvent LivestockEvent? @relation(fields: [livestockEventId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, invoiceNumber])
   @@unique([organizationId, requestId])

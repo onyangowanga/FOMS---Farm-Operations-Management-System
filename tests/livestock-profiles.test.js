@@ -38,7 +38,7 @@ test("additive livestock migration preserves legacy groups, vaccination dates an
       assert.equal(records[0].lastVaccinated.toISOString(), "2025-01-01T00:00:00.000Z");
       assert.equal((await tx.$queryRawUnsafe('SELECT COUNT(*) AS count FROM "LivestockEvent"'))[0].count, 0n);
       throw rollback;
-    });
+    }, { timeout: 20_000 });
   } catch (error) { if (error !== rollback) throw error; }
   finally { await prisma.$disconnect(); }
 });

@@ -26,6 +26,11 @@ const paymentSchema = z.object({
   requestId: z.uuid().optional(), amount: money, method: z.enum(["CASH", "MPESA", "BANK_TRANSFER", "CHEQUE", "OTHER"]),
   reference: z.string().trim().max(120).optional(), receivedAt: z.coerce.date().optional()
 }).strict();
+const livestockInvoiceSchema = z.object({
+  requestId: z.uuid().optional(), buyerId: z.uuid().optional(), buyer: buyerFields.optional(),
+  unitPrice: money, currency: currency.default("KES"), dueDate: z.coerce.date().nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional()
+}).strict();
 const querySchema = z.object({ ...queryFields, status: z.enum(["PAID", "PARTIAL", "UNPAID", "OVERDUE"]).optional() }).strict().refine(validRange, { message: "Start date must not follow end date" });
 async function find(tx, req) {
   const record = await tx.sale.findFirst({ where: scope(req, z.uuid().parse(req.params.id)), include: saleInclude });
@@ -104,6 +109,45 @@ router.post("/", async (req, res, next) => {
     res.status(201).json({ success: true, message: `Invoice ${record.invoiceNumber} created`, data: saleView(record) });
   } catch (error) { next(error); }
 });
+router.post("/livestock-events/:eventId/invoice", async (req, res, next) => {
+  try {
+    const payload = livestockInvoiceSchema.parse(req.body);
+    const eventId = z.uuid().parse(req.params.eventId);
+    const sale = await prisma.$transaction(async (tx) => {
+      await lockOrganization(tx, req.auth.organizationId);
+      const event = await tx.livestockEvent.findFirst({
+        where: { id: eventId, type: "SALE", livestock: { organizationId: req.auth.organizationId, deletedAt: null, farm: { deletedAt: null } } },
+        include: { livestock: true, saleInvoice: true }
+      });
+      if (!event) throw new AppError(404, "Livestock sale event was not found");
+      const hashPayload = { ...payload, livestockEventId: event.id };
+      const previous = await replay(tx, "sale", req, hashPayload, "createdBy", saleInclude);
+      if (previous) {
+        if (previous.livestockEventId !== event.id) throw new AppError(409, "Request ID belongs to another sale");
+        return previous;
+      }
+      if (event.saleInvoice) throw new AppError(409, "This livestock sale already has a linked invoice");
+      await relatedBuyer(tx, req, payload);
+      const farmId = event.livestock.farmId;
+      const product = `${event.livestock.species} - ${event.livestock.identifier || "Livestock"}${event.livestock.species === "POULTRY" ? " (birds)" : " (head)"}`;
+      const totals = amounts({ unitPrice: payload.unitPrice, quantity: event.quantity, soldAt: event.occurredAt, dueDate: payload.dueDate });
+      const buyer = payload.buyerId ? null : await tx.buyer.create({
+        data: { ...payload.buyer, farmId, organizationId: req.auth.organizationId, createdBy: req.auth.userId }
+      });
+      const created = await tx.sale.create({ data: {
+        organizationId: req.auth.organizationId, farmId, buyerId: payload.buyerId || buyer.id,
+        invoiceNumber: `FOMS-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`,
+        product, quantity: event.quantity, unit: "head", ...totals, currency: payload.currency,
+        soldAt: event.occurredAt, dueDate: payload.dueDate, notes: payload.notes || null,
+        requestId: payload.requestId, requestHash: requestHash(hashPayload), createdBy: req.auth.userId,
+        livestockEventId: event.id
+      }, include: saleInclude });
+      await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "CREATE", entity: "Sale", entityId: created.id }, tx);
+      return created;
+    });
+    res.status(201).json({ success: true, message: `Invoice ${sale.invoiceNumber} linked to the livestock sale`, data: saleView(sale) });
+  } catch (error) { next(error); }
+});
 router.patch("/:id", async (req, res, next) => {
   try {
     const payload = saleFields.omit({ buyer: true }).partial().parse(req.body);
@@ -112,6 +156,9 @@ router.patch("/:id", async (req, res, next) => {
       await lockOrganization(tx, req.auth.organizationId);
       const existing = await find(tx, req);
       if (existing.payments.length) throw new AppError(409, "Invoices with payments are locked");
+      if (existing.livestockEventId && ["farmId", "quantity", "soldAt", "product", "unit"].some((field) => payload[field] !== undefined)) {
+        throw new AppError(409, "Farm, product, quantity, unit and sale date are fixed by the linked livestock sale event");
+      }
       if (Object.hasOwn(payload, "farmId") && payload.farmId !== existing.farmId) await relatedFarm(tx, req, payload.farmId);
       if (Object.hasOwn(payload, "buyerId")) await relatedBuyer(tx, req, payload);
       const updated = await tx.sale.update({ where: { id: existing.id }, data: { ...payload, ...amounts({ ...existing, ...payload }) }, include: saleInclude });
@@ -127,6 +174,7 @@ router.delete("/:id", async (req, res, next) => {
       await lockOrganization(tx, req.auth.organizationId);
       const record = await find(tx, req);
       if (record.payments.length) throw new AppError(409, "Invoices with payments cannot be archived");
+      if (record.livestockEventId) throw new AppError(409, "This invoice is linked to an immutable livestock sale event and cannot be archived");
       await tx.sale.update({ where: { id: record.id }, data: { deletedAt: new Date() } });
       await writeAudit({ organizationId: req.auth.organizationId, userId: req.auth.userId, action: "ARCHIVE", entity: "Sale", entityId: record.id }, tx);
     });

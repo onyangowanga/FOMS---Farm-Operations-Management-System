@@ -110,6 +110,15 @@ Test workspaces are generated uniquely and removed afterward; never run these te
 
 PDF uses built-in WinAnsi fonts. If a report contains unsupported scripts (for example Chinese), PDF returns an explicit error rather than corrupting names; Excel preserves the original Unicode text.
 
+## Version 0.10 - Livestock lifecycle
+
+- Owners/managers can record dated purchases, births, breeding and sales as append-only livestock events. Batch purchases and births increase both the living count and total recorded additions; sales reduce living quantity immediately and cannot oversell. An individual profile represents one animal; create separate profiles for individually tracked purchases and offspring.
+- A batch can be restocked after all recorded animals have died or been sold. Poultry quantities are shown as birds; birth records make the batch's age explicitly mixed.
+- Recording a purchase atomically creates a linked `LIVESTOCK` expense, pending owner approval. Its farm, category and date stay tied to the event; the amount and supplier remain editable while pending. Linked purchase expenses cannot be archived independently of the livestock record.
+- A sale event is recorded first and reduces stock. Owners/managers can then create an invoice from that event, select or create a buyer, choose a price per animal and optional due date, and later record payments through the normal invoice workflow. Farm, product, unit, sale date and quantity are fixed by the event; linked invoices cannot be archived.
+- Event writes are transactionally serialized per workspace and support safe request-ID retries. Breeding captures the date and mate identifier; it does not infer lineage or add offspring until births are recorded. No automatic feed inventory integration is included.
+- API: `POST /api/v1/livestock/:id/events` accepts `PURCHASE`, `BIRTH`, `BREEDING` and `SALE`; `POST /api/v1/sales/livestock-events/:eventId/invoice` creates or replays the separately linked invoice.
+
 ## Local development
 Requirements: Node.js 20+, npm, and PostgreSQL 14+.
 

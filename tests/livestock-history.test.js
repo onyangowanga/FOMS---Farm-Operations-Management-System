@@ -28,7 +28,7 @@ test("vaccination, health, weight and poultry production persist history without
     assert.equal(result.lastVaccinated, "2026-02-01T00:00:00.000Z");
     assert.equal(result.healthStatus, "HEALTHY");
     assert.equal(result.weightKg, 1.8);
-    assert.deepEqual(result.totals, { mortality: 0, feedKg: 3.75, eggs: 33 });
+    assert.deepEqual(result.totals, { mortality: 0, feedKg: 3.75, eggs: 33, births: 0, purchases: 0, sales: 0 });
     assert.equal((await request(`${path}/events?limit=3&page=2`, "GET", undefined, owner.cookie)).body.meta.total, 10);
     assert.equal((await request(`${path}/events`, "GET", undefined, owner.cookie)).body.data.find((item) => item.type === "VACCINATION" && item.title === "Newcastle").nextDueAt, "2026-03-01T00:00:00.000Z");
     assert.equal((await request(path, "PATCH", { healthStatus: "SICK" }, owner.cookie)).status, 409);

@@ -1,5 +1,5 @@
-import { api } from "./api.js?v=0.9.0";
-import { field, modal } from "./v03.js?v=0.9.0";
+import { api } from "./api.js?v=0.10.0";
+import { field, modal } from "./v03.js?v=0.10.0";
 import { offlineStore } from "./offline.js";
 
 let context;
@@ -14,7 +14,7 @@ const day = (value = new Date()) => {
 };
 const dateISO = (value, end = false) => value ? new Date(`${value}T${end ? "23:59:59.999" : "00:00:00"}`).toISOString() : undefined;
 const money = (amount, currency) => `${currency} ${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const categories = ["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"];
+const categories = ["LABOR", "SEED", "FERTILIZER", "CHEMICALS", "FEED", "LIVESTOCK", "TRANSPORT", "VETERINARY", "FUEL", "REPAIRS", "OTHER"];
 const methods = ["CASH", "MPESA", "BANK_TRANSFER", "CHEQUE", "OTHER"];
 let summaryFilters = { from: day(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), to: day() };
 function params(values) {
@@ -49,11 +49,16 @@ export async function openExpenseModal(expense = {}) {
       '<p class="text-xs text-slate-500">Only owner-approved expenses reduce profit. Attach private receipt photos/PDFs from the expense detail page before approval. Approved expenses and receipts are locked.</p>',
       async (values) => {
         const payload = { ...values, amount: Number(values.amount), farmId: values.farmId || null, expenseDate: dateISO(values.expenseDate), supplier: values.supplier || null, paymentMethod: values.paymentMethod || null, notes: values.notes || null };
+        if (expense.livestockEventId) for (const name of ["farmId", "category", "expenseDate"]) delete payload[name];
         const response = expense.id ? await api.patch(`/expenses/${expense.id}`, payload) : await api.post("/expenses", { ...payload, requestId });
         if (!expense.id) location.hash = `#expenses/${response.data.id}`;
         return response;
       });
     form.elements.amount.step = "0.01"; form.elements.amount.min = "0.01";
+    if (expense.livestockEventId) {
+      for (const name of ["farmId", "category"]) form.elements[name].disabled = true;
+      form.elements.expenseDate.readOnly = true;
+    }
   } catch (error) { context.showToast(error.message, "error"); }
 }
 export async function openSaleModal(sale = {}) {
@@ -80,12 +85,17 @@ export async function openSaleModal(sale = {}) {
           farmId: values.farmId || null, soldAt: dateISO(values.soldAt), dueDate: values.dueDate ? dateISO(values.dueDate, true) : null, notes: values.notes || null,
           ...(values.buyerId ? { buyerId: values.buyerId } : { buyer: { name: values.buyerName, ...(values.buyerPhone ? { phone: values.buyerPhone } : {}), ...(values.buyerEmail ? { email: values.buyerEmail } : {}) } })
         };
+        if (sale.livestockEventId) for (const name of ["product", "quantity", "unit", "farmId", "soldAt"]) delete payload[name];
         const response = sale.id ? await api.patch(`/sales/${sale.id}`, payload) : await api.post("/sales", { ...payload, requestId });
         if (!sale.id) location.hash = `#sales/${response.data.id}`;
         return response;
       });
     form.elements.quantity.step = "0.001"; form.elements.quantity.min = "0.001";
     form.elements.unitPrice.step = "0.01"; form.elements.unitPrice.min = "0.01";
+    if (sale.livestockEventId) {
+      for (const name of ["product", "quantity", "unit", "soldAt"]) form.elements[name].readOnly = true;
+      form.elements.farmId.disabled = true;
+    }
     if (!sale.id) form.elements.buyerId.onchange = () => {
       const adding = !form.elements.buyerId.value;
       form.querySelector("[data-new-buyer]").hidden = !adding;
@@ -122,8 +132,8 @@ async function expenseDetail(id) {
   const pending = !expense.approvedAt;
   const root = document.querySelector("#content");
   root.innerHTML = `<a href="#expenses" class="text-sm font-semibold text-forest-700">Back to expenses</a>
-    <div class="my-5 flex flex-wrap justify-between gap-3"><div class="w-full min-w-0 sm:flex-1"><h1 class="break-words text-2xl font-semibold">${esc(expense.description)}</h1><p class="mt-2 text-sm">${esc(money(expense.amount, expense.currency))} - ${pending ? "Pending approval (excluded from profit)" : "Approved (included in profit)"}</p></div>${pending ? '<div class="flex flex-wrap gap-2"><button data-edit class="btn-secondary">Edit</button><button data-archive class="btn-secondary">Archive</button></div>' : ""}</div>
-    <section class="card min-w-0 break-words"><p class="text-sm">Date: ${esc(date(expense.expenseDate))} - ${esc(expense.farm?.name || "General workspace")}</p><p class="mt-2 text-sm">Category: ${esc(label(expense.category))}</p><p class="mt-2 text-sm">Supplier: ${esc(expense.supplier || "Not set")}</p><p class="mt-2 text-sm">Payment method: ${esc(expense.paymentMethod || "Not set")}</p><p class="mt-2 text-sm">Recorded by: ${esc(expense.creator?.name || "Previous user")}</p>${expense.notes ? `<p class="mt-3 whitespace-pre-wrap text-sm">${esc(expense.notes)}</p>` : ""}
+    <div class="my-5 flex flex-wrap justify-between gap-3"><div class="w-full min-w-0 sm:flex-1"><h1 class="break-words text-2xl font-semibold">${esc(expense.description)}</h1><p class="mt-2 text-sm">${esc(money(expense.amount, expense.currency))} - ${pending ? "Pending approval (excluded from profit)" : "Approved (included in profit)"}</p></div>${pending ? `<div class="flex flex-wrap gap-2"><button data-edit class="btn-secondary">Edit</button>${expense.livestockEventId ? "" : '<button data-archive class="btn-secondary">Archive</button>'}</div>` : ""}</div>
+    <section class="card min-w-0 break-words"><p class="text-sm">Date: ${esc(date(expense.expenseDate))} - ${esc(expense.farm?.name || "General workspace")}</p><p class="mt-2 text-sm">Category: ${esc(label(expense.category))}</p>${expense.livestockEventId ? '<p class="mt-2 text-xs text-slate-500">Farm, category and date are fixed by the linked livestock purchase event.</p>' : ""}<p class="mt-2 text-sm">Supplier: ${esc(expense.supplier || "Not set")}</p><p class="mt-2 text-sm">Payment method: ${esc(expense.paymentMethod || "Not set")}</p><p class="mt-2 text-sm">Recorded by: ${esc(expense.creator?.name || "Previous user")}</p>${expense.notes ? `<p class="mt-3 whitespace-pre-wrap text-sm">${esc(expense.notes)}</p>` : ""}
     ${pending && context.getUser().role === "OWNER" ? '<button data-approve class="btn-primary mt-4">Approve expense</button>' : ""}${expense.approvedAt ? `<p class="mt-4 text-sm">Approved ${esc(date(expense.approvedAt))}. Record and receipts are locked.</p>` : ""}</section>
     <section class="card mt-5"><div class="flex flex-wrap justify-between gap-2"><h2 class="text-lg font-semibold">Private receipts</h2>${pending ? '<button data-upload class="btn-secondary">Attach receipt</button>' : ""}</div><div class="mt-4 space-y-3">${attachments.data.map((file) => `<article class="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border p-3"><a class="min-w-0 max-w-full break-words text-sm text-forest-700" href="${esc(file.downloadPath)}" download>${esc(file.originalName)}</a>${pending ? `<button data-remove="${file.id}" class="btn-secondary">Remove</button>` : ""}</article>`).join("") || '<p class="text-sm text-slate-500">No receipts attached.</p>'}</div></section>`;
   root.querySelector("[data-edit]")?.addEventListener("click", () => openExpenseModal(expense));
@@ -140,7 +150,7 @@ async function expenseDetail(id) {
 async function saleDetail(id) {
   const sale = (await api.get(`/sales/${id}`)).data;
   const root = document.querySelector("#content");
-  root.innerHTML = `<a href="#sales" class="text-sm font-semibold text-forest-700">Back to sales</a><div class="my-5 flex flex-wrap justify-between gap-3"><div class="w-full min-w-0 sm:flex-1"><h1 class="break-words text-2xl font-semibold">${esc(sale.invoiceNumber)}</h1><p class="mt-2 break-words text-sm">${esc(sale.product)} - ${esc(sale.buyer?.name || "Previous buyer")}</p></div>${!sale.payments.length ? '<div class="flex flex-wrap gap-2"><button data-edit class="btn-secondary">Edit unpaid invoice</button><button data-archive class="btn-secondary">Archive</button></div>' : ""}</div>
+  root.innerHTML = `<a href="#sales" class="text-sm font-semibold text-forest-700">Back to sales</a><div class="my-5 flex flex-wrap justify-between gap-3"><div class="w-full min-w-0 sm:flex-1"><h1 class="break-words text-2xl font-semibold">${esc(sale.invoiceNumber)}</h1><p class="mt-2 break-words text-sm">${esc(sale.product)} - ${esc(sale.buyer?.name || "Previous buyer")}</p></div>${!sale.payments.length ? `<div class="flex flex-wrap gap-2"><button data-edit class="btn-secondary">Edit unpaid invoice</button>${sale.livestockEventId ? "" : '<button data-archive class="btn-secondary">Archive</button>'}</div>` : ""}</div>
     <section class="card min-w-0 break-words"><p class="text-lg font-semibold">${esc(money(sale.totalAmount, sale.currency))} - ${esc(label(sale.paymentStatus))}</p><p class="mt-2 text-sm">Quantity: ${Number(sale.quantity).toLocaleString()} ${esc(sale.unit)} at ${esc(money(sale.unitPrice, sale.currency))}</p><p class="mt-2 text-sm">Collected: ${esc(money(sale.totalPaid, sale.currency))}</p><p class="mt-2 text-sm">Outstanding: ${esc(money(sale.balance, sale.currency))}</p><p class="mt-2 text-sm">Sold: ${esc(date(sale.soldAt))} / due: ${esc(date(sale.dueDate))}</p><p class="mt-2 text-sm">Farm: ${esc(sale.farm?.name || "General workspace")}</p>${sale.notes ? `<p class="mt-3 whitespace-pre-wrap text-sm">${esc(sale.notes)}</p>` : ""}${sale.balance > 0 ? '<button data-payment class="btn-primary mt-4">Record payment</button>' : ""}</section>
     <section class="card mt-5"><h2 class="text-lg font-semibold">Payment history</h2><p class="mt-2 text-xs text-slate-500">Append-only. Currency is fixed by this invoice.</p><div class="mt-4 space-y-3">${sale.payments.map((payment) => `<article class="min-w-0 rounded-xl border p-3"><p class="text-sm font-semibold">${esc(money(payment.amount, sale.currency))} - ${esc(label(payment.method))}</p><p class="mt-2 text-xs text-slate-500">Received ${esc(date(payment.receivedAt))}</p><p class="mt-2 break-words text-sm">${esc(payment.reference || "No reference")}</p></article>`).join("") || '<p class="text-sm text-slate-500">No payments yet.</p>'}</div></section>`;
   root.querySelector("[data-edit]")?.addEventListener("click", () => openSaleModal(sale));
