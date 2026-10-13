@@ -26,7 +26,7 @@ test("inventory: hybrid assets, append-only maintenance, backdates, replay and p
     assert.equal((await request("/inventory/items", "POST", payload, owner.cookie)).status, 409);
     assert.equal((await request(`/inventory/items/${id}/movements`, "POST", { type: "OUT", quantity: 1 }, owner.cookie)).status, 409);
     assert.equal((await request(path, "GET", undefined, foreign.cookie)).status, 404);
-    assert.equal((await request(path, "GET", undefined, worker.cookie)).status, 403);
+    assert.equal((await request(path, "GET", undefined, worker.cookie)).status, 200);
     const older = new Date().toISOString();
     await new Promise((resolve) => setTimeout(resolve, 20));
     const next = new Date(Date.now() + 86400000).toISOString();

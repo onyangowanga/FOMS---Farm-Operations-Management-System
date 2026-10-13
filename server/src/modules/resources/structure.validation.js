@@ -19,6 +19,9 @@ export const blockSchema = z.object({
   farmId: z.uuid(),
   name: z.string().trim().min(1).max(120),
   acreage,
+  widthMeters: acreage,
+  bedCount: z.number().int().nonnegative().max(100000).nullable().optional(),
+  driplineCount: z.number().int().nonnegative().max(1000000).nullable().optional(),
   currentUse: text,
   soilType: text,
   ...coordinates

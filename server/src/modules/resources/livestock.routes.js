@@ -44,7 +44,7 @@ const audit = (tx, req, action, id, eventId) => writeAudit({
 
 router.get("/", async (req, res, next) => {
   try {
-    const query = querySchema.extend({ farmId: z.uuid().optional(), species: z.enum(["GOAT", "SHEEP", "POULTRY"]).optional() }).parse(req.query);
+    const query = querySchema.extend({ farmId: z.uuid().optional(), species: z.string().trim().max(40).optional() }).parse(req.query);
     const where = { ...scope(req), ...(query.farmId ? { farmId: query.farmId } : {}), ...(query.species ? { species: query.species } : {}) };
     const [data, total] = await prisma.$transaction([
       prisma.livestock.findMany({ where, include: { farm: farmSelect, _count: { select: { events: true } } }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], skip: (query.page - 1) * query.limit, take: query.limit }),
@@ -150,7 +150,7 @@ router.post("/:id/events", async (req, res, next) => {
       }
       if (!record.quantity && !(payload.type === "PURCHASE" && record.trackingMode === "BATCH")) throw new AppError(409, "No living animals remain in this record; only a batch can be restocked");
       if (record.birthDate && payload.occurredAt < record.birthDate) throw new AppError(400, "Observation cannot be before birth / hatch date");
-      if (["FEED", "EGG_PRODUCTION"].includes(payload.type) && record.species !== "POULTRY") throw new AppError(400, "Feed consumption and egg production are poultry records");
+      if (["FEED", "EGG_PRODUCTION"].includes(payload.type) && !["POULTRY", "DUCK", "TURKEY", "QUAIL", "GUINEA_FOWL"].includes(record.species)) throw new AppError(400, "Feed consumption and egg production are poultry records");
       if (["MORTALITY", "VACCINATION"].includes(payload.type) && payload.quantity > record.quantity) throw new AppError(409, "Quantity exceeds the living animals in this record");
       const update = {};
       if (payload.type === "BIRTH" && record.trackingMode !== "BATCH") {

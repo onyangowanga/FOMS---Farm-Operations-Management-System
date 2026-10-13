@@ -8,7 +8,7 @@ const count = positive.int().max(100000);
 export const healthStatus = z.enum(["HEALTHY", "UNDER_TREATMENT", "SICK"]);
 export const livestockSchema = z.object({
   farmId: z.uuid(),
-  species: z.enum(["GOAT", "SHEEP", "POULTRY"]),
+  species: z.string().trim().min(2).max(40).regex(/^[A-Za-z][A-Za-z0-9 _-]*$/, "Use letters, numbers and spaces for the animal type").transform((value) => value.toUpperCase().replace(/\s+/g, "_")),
   trackingMode: z.enum(["INDIVIDUAL", "BATCH"]).optional(),
   identifier: text,
   breed: text,

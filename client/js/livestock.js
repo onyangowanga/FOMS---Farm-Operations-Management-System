@@ -1,6 +1,6 @@
-import { api } from "./api.js?v=0.10.0";
-import { field, modal } from "./v03.js?v=0.10.0";
-import { localDateTime } from "./reports.js?v=0.10.0";
+import { api } from "./api.js?v=0.12.0";
+import { field, modal } from "./v03.js?v=0.12.0";
+import { localDateTime } from "./reports.js?v=0.12.0";
 
 let context;
 export function configureLivestock(value) { context = value; }
@@ -8,7 +8,9 @@ const esc = (value) => context.escapeHtml(value);
 const label = (value) => String(value).toLowerCase().replaceAll("_", " ");
 const date = (value) => value ? new Date(value).toLocaleDateString() : "Not set";
 const title = (record) => record.identifier || `${label(record.species)} ${record.id.slice(0, 8)}`;
-const speciesItems = ["GOAT", "SHEEP", "POULTRY"].map((value) => [value, label(value)]);
+const poultryLike = ["POULTRY", "DUCK", "TURKEY", "QUAIL", "GUINEA_FOWL"];
+const presetSpecies = ["GOAT", "SHEEP", "POULTRY", "CATTLE", "PIG", "RABBIT", "DONKEY", "DUCK", "TURKEY", "FISH"];
+const speciesItems = presetSpecies.map((value) => [value, label(value)]);
 const healthItems = ["HEALTHY", "UNDER_TREATMENT", "SICK"].map((value) => [value, label(value)]);
 const day = (value) => value ? new Date(value).toISOString().slice(0, 10) : "";
 
@@ -20,7 +22,8 @@ export async function openLivestockModal(record = {}) {
     const quantityLocked = historyLocked || record.quantity === 0 || record.quantity < record.initialQuantity;
     const form = modal(editing ? "Edit livestock profile" : "Add livestock", '<div class="grid gap-4 sm:grid-cols-2">' +
       field("farmId", "Farm", "select", record.farmId, { required: true, items: [["", "Select a farm"], ...farms.map((farm) => [farm.id, farm.name])] }) +
-      field("species", "Species", "select", record.species || "GOAT", { items: speciesItems }) +
+      field("species", "Animal type", "select", !record.species ? "GOAT" : presetSpecies.includes(record.species) ? record.species : "OTHER", { items: [...speciesItems, ["OTHER", "Other (type the name)"]] }) +
+      field("customSpecies", "Animal type name", "text", presetSpecies.includes(record.species) ? "" : label(record.species || ""), { maxlength: 40 }) +
       field("trackingMode", "Tracking mode", "select", record.trackingMode || "INDIVIDUAL", { items: [["INDIVIDUAL", "Individual animal"], ["BATCH", "Batch / flock / herd"]] }) +
       field("identifier", "Animal ID / batch number", "text", record.identifier || "", { maxlength: 200 }) +
       field("breed", "Breed", "text", record.breed || "", { maxlength: 200 }) +
@@ -30,7 +33,7 @@ export async function openLivestockModal(record = {}) {
       '</div>' + field("notes", "Profile notes", "textarea", record.notes || "") +
       `<p class="text-xs text-slate-500">Use history records for health, weight and vaccination updates. Mortality automatically reduces living quantity. ${editing ? "Quantity, farm, species and tracking mode lock once history exists." : "Individuals have quantity 1; a batch can contain any number of animals."}</p>`,
       async (values) => {
-        const payload = { farmId: values.farmId, species: values.species, trackingMode: values.trackingMode, identifier: values.identifier || null, breed: values.breed || null, birthDate: values.birthDate || null, notes: values.notes || null };
+        const payload = { farmId: values.farmId, species: values.species === "OTHER" ? (values.customSpecies || "").trim() : values.species, trackingMode: values.trackingMode, identifier: values.identifier || null, breed: values.breed || null, birthDate: values.birthDate || null, notes: values.notes || null };
         if (!quantityLocked) payload.quantity = Number(values.quantity);
         if (!editing) Object.assign(payload, { healthStatus: values.healthStatus, weightKg: values.weightKg ? Number(values.weightKg) : null, lastVaccinated: values.lastVaccinated || null });
         return editing ? api.patch(`/livestock/${record.id}`, payload) : api.post("/livestock", payload);
@@ -43,6 +46,9 @@ export async function openLivestockModal(record = {}) {
       hidden.type = "hidden"; hidden.name = name; hidden.value = record[name];
       form.append(hidden);
     }
+    const syncSpecies = () => { const other = form.elements.species.value === "OTHER"; form.elements.customSpecies.closest("label").hidden = !other; form.elements.customSpecies.required = other; };
+    form.elements.species.addEventListener("change", syncSpecies);
+    syncSpecies();
     form.elements.quantity.step = "1";
     form.elements.quantity.max = "100000";
     const updateMode = () => {
@@ -61,7 +67,7 @@ function openEventModal(record) {
   const requestId = crypto.randomUUID();
   const types = record.quantity > 0
     ? ["HEALTH", "VACCINATION", "WEIGHT", "MORTALITY", "PURCHASE", "BREEDING", "SALE",
-      ...(record.trackingMode === "BATCH" ? ["BIRTH"] : []), ...(record.species === "POULTRY" ? ["FEED", "EGG_PRODUCTION"] : [])]
+      ...(record.trackingMode === "BATCH" ? ["BIRTH"] : []), ...(poultryLike.includes(record.species) ? ["FEED", "EGG_PRODUCTION"] : [])]
     : record.trackingMode === "BATCH" ? ["PURCHASE"] : [];
   const form = modal("Record livestock activity", field("type", "Record type", "select", "HEALTH", { items: types.map((value) => [value, label(value)]) }) +
     field("occurredAt", "Observed date and time", "datetime-local", localDateTime(), { required: true }) +

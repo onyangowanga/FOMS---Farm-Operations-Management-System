@@ -1,0 +1,3 @@
+ALTER TABLE "Block" ADD COLUMN "widthMeters" DOUBLE PRECISION,
+ADD COLUMN "bedCount" INTEGER,
+ADD COLUMN "driplineCount" INTEGER;

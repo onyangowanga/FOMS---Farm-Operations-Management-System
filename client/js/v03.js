@@ -1,5 +1,5 @@
-import { api } from "./api.js?v=0.10.0";
-import { suggestCropSchedule } from "./crop-schedule.js?v=0.10.0";
+import { api } from "./api.js?v=0.12.0";
+import { suggestCropSchedule } from "./crop-schedule.js?v=0.12.0";
 
 let context;
 export function configureV03(value) { context = value; }

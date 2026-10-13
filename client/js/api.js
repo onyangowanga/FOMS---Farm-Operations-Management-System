@@ -76,6 +76,7 @@ export const api = {
   download: (path) => apiRequest(path, {}, true),
   post: (path, body) => apiRequest(path, { method: "POST", body: JSON.stringify(body) }),
   upload: (path, body) => apiRequest(path, { method: "POST", body, queueOffline: false }),
+  put: (path, body) => apiRequest(path, { method: "PUT", body: JSON.stringify(body) }),
   patch: (path, body) => apiRequest(path, { method: "PATCH", body: JSON.stringify(body) }),
   delete: (path) => apiRequest(path, { method: "DELETE" })
 };

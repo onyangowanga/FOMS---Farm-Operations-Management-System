@@ -1,6 +1,6 @@
-import { api } from "./api.js?v=0.10.0";
-import { field, modal } from "./v03.js?v=0.10.0";
-import { localDateTime } from "./reports.js?v=0.10.0";
+import { api } from "./api.js?v=0.12.0";
+import { field, modal } from "./v03.js?v=0.12.0";
+import { localDateTime } from "./reports.js?v=0.12.0";
 
 let context;
 export function configureTasks(value) { context = value; }
@@ -8,7 +8,7 @@ const esc = (value) => context.escapeHtml(value);
 const manage = () => ["OWNER", "MANAGER"].includes(context.getUser().role);
 const worker = () => context.getUser().role === "WORKER";
 const label = (value) => String(value).toLowerCase().replaceAll("_", " ");
-const statuses = ["PENDING", "IN_PROGRESS", "COMPLETED", "APPROVED"];
+const statuses = ["PENDING", "IN_PROGRESS", "COMPLETED", "APPROVED", "VOID"];
 const editable = (task) => ["PENDING", "IN_PROGRESS"].includes(task.status);
 const date = (value) => value ? new Date(value).toLocaleString() : "Not set";
 
@@ -42,6 +42,12 @@ function statusModal(task, status) {
     (values) => api.post(`/tasks/${task.id}/status`, { status, notes: values.notes || null }));
 }
 
+function voidModal(task) {
+  modal("Void task", `<p class="break-words text-sm">${esc(task.title)}</p><p class="text-xs text-slate-500">Voiding cancels the task. It stays in history, is not counted, and the assignee is notified.</p>` +
+    field("reason", "Reason for voiding", "textarea", "", { required: true }),
+    (values) => api.post(`/tasks/${task.id}/void`, { reason: values.reason }));
+}
+
 function uploadModal(task) {
   modal("Upload task evidence", '<label class="block"><span class="label">Photo or PDF (maximum 10 MB)</span><input class="field" type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" required></label><p class="text-xs text-slate-500">Files are private to users who can access this task. Up to 10 active files per task. A connection is required to upload.</p>',
     (_values, form) => {
@@ -69,6 +75,7 @@ async function detail(id) {
       </div>
       <div class="flex flex-wrap gap-2">
         ${manage() && editable(task) ? '<button data-edit class="btn-secondary">Edit task</button>' : ""}
+        ${manage() && !["VOID", "APPROVED"].includes(task.status) ? '<button data-void class="btn-secondary">Void task</button>' : ""}
         ${manage() ? '<button data-archive class="btn-secondary">Archive</button>' : ""}
       </div>
     </div>
@@ -101,6 +108,7 @@ async function detail(id) {
       ${events.map((event) => `<article class="card"><div class="flex flex-wrap justify-between gap-2"><h3 class="min-w-0 break-words font-semibold">${esc(label(event.action))}</h3><time class="text-xs text-slate-500">${esc(date(event.createdAt))}</time></div>${event.toStatus ? `<p class="mt-2 text-sm">${event.fromStatus ? `${esc(label(event.fromStatus))} to ` : ""}${esc(label(event.toStatus))}</p>` : ""}${event.notes ? `<p class="mt-2 whitespace-pre-wrap break-words text-sm">${esc(event.notes)}</p>` : ""}</article>`).join("") || '<div class="card text-sm text-slate-500">No workflow history yet. Legacy task status has been preserved.</div>'}
     </div>`;
   root.querySelector("[data-edit]")?.addEventListener("click", () => openTaskModal(task));
+  root.querySelector("[data-void]")?.addEventListener("click", () => voidModal(task));
   root.querySelector("[data-upload]")?.addEventListener("click", () => uploadModal(task));
   root.querySelectorAll("[data-status]").forEach((button) => button.onclick = () => statusModal(task, button.dataset.status));
   root.querySelectorAll("[data-remove]").forEach((button) => button.onclick = async () => {
@@ -119,12 +127,22 @@ export async function renderTasks(id) {
   if (id) return detail(id);
   const records = await context.loadAll("/tasks");
   const root = document.querySelector("#content");
-  root.innerHTML = `<div class="mb-5 flex flex-wrap justify-between gap-3"><div><h1 class="text-2xl font-semibold">${worker() ? "My assigned tasks" : "Task management"}</h1><p class="mt-2 text-sm text-slate-500">Start work, attach evidence, submit and review.</p></div>${manage() ? '<button data-new class="btn-primary">Create task</button>' : ""}</div><div class="mb-4 grid gap-3 sm:grid-cols-2">${field("statusFilter", "Status", "select", "", { items: [["", "All statuses"], ...statuses.map((value) => [value, label(value)])] })}${field("searchTasks", "Search tasks", "search")}</div><div data-task-list class="grid gap-4 xl:grid-cols-2"></div>`;
+  root.innerHTML = `<div class="mb-5 flex flex-wrap justify-between gap-3"><div><h1 class="text-2xl font-semibold">${worker() ? "My assigned tasks" : "Task management"}</h1><p class="mt-2 text-sm text-slate-500">Start work, attach evidence, submit and review.</p></div>${manage() ? '<button data-new class="btn-primary">Create task</button>' : ""}</div><div class="mb-4 grid gap-3 sm:grid-cols-2">${field("statusFilter", "Status", "select", "", { items: [["", worker() ? "My open tasks" : "All active"], ...statuses.map((value) => [value, label(value)])] })}${field("searchTasks", "Search tasks", "search")}</div><div data-task-list class="grid gap-4 xl:grid-cols-2"></div>`;
   const update = () => {
     const status = root.querySelector('[name=statusFilter]').value;
     const search = root.querySelector('[name=searchTasks]').value.trim().toLowerCase();
-    const items = records.filter((task) => (!status || task.status === status) && (!search || `${task.title} ${task.assignee?.name || ""} ${task.farm?.name || ""}`.toLowerCase().includes(search)));
-    root.querySelector("[data-task-list]").innerHTML = items.map((task) => `<a href="#tasks/${task.id}" class="card block min-w-0 text-slate-800 hover:border-forest-500"><h2 class="break-words font-semibold">${esc(task.title)}</h2><p class="mt-2 text-sm">${esc(label(task.status))} - ${esc(label(task.priority))} priority</p><p class="mt-2 break-words text-sm text-slate-500">${esc(task.assignee?.name || "Unassigned")} - ${esc(task.farm?.name || "General workspace")}</p><p class="mt-2 text-xs ${task.dueDate && new Date(task.dueDate) < new Date() && editable(task) ? "text-red-700" : "text-slate-500"}">Due: ${esc(date(task.dueDate))}</p>${task.evidenceRequired ? '<p class="mt-2 text-xs text-forest-700">Evidence required</p>' : ""}</a>`).join("") || '<div class="card text-sm text-slate-500">No tasks match these filters.</div>';
+    const items = records.filter((task) => (status ? task.status === status : task.status !== "VOID" && !(worker() && task.status === "APPROVED")) && (!search || `${task.title} ${task.assignee?.name || ""} ${task.farm?.name || ""}`.toLowerCase().includes(search)));
+        root.querySelector("[data-task-list]").innerHTML = items.map((task) => {
+      const late = task.dueDate && new Date(task.dueDate) < new Date() && editable(task);
+      const quick = (worker() || manage()) && task.status === "PENDING" ? `<button data-quick="IN_PROGRESS" data-id="${task.id}" class="btn-primary mt-3 w-full py-3 text-base">Start</button>`
+        : (worker() || manage()) && task.status === "IN_PROGRESS" ? (task.evidenceRequired ? `<a href="#tasks/${task.id}" class="btn-primary mt-3 block w-full py-3 text-center text-base">Add photo and finish</a>` : `<button data-quick="COMPLETED" data-id="${task.id}" class="btn-primary mt-3 w-full py-3 text-base">Mark done</button>`) : "";
+      return `<div class="card min-w-0 ${late ? "border-red-200" : ""}"><a href="#tasks/${task.id}" class="block text-slate-800"><h2 class="break-words text-base font-semibold">${esc(task.title)}</h2><p class="mt-2 text-sm">${esc(label(task.status))} - ${esc(label(task.priority))} priority</p><p class="mt-2 break-words text-sm text-slate-500">${esc(task.assignee?.name || "Unassigned")} - ${esc(task.farm?.name || "General workspace")}</p><p class="mt-2 text-xs ${late ? "text-red-700" : "text-slate-500"}">Due: ${esc(date(task.dueDate))}${late ? " (overdue)" : ""}</p>${task.evidenceRequired ? '<p class="mt-2 text-xs text-forest-700">Photo required</p>' : ""}</a>${quick}</div>`;
+    }).join("") || '<div class="card text-sm text-slate-500">No tasks match these filters.</div>';
+    root.querySelectorAll("[data-quick]").forEach((button) => button.onclick = async () => {
+      button.disabled = true;
+      try { const response = await api.post(`/tasks/${button.dataset.id}/status`, { status: button.dataset.quick, notes: null }); context.showToast(response.message); await context.reload(); }
+      catch (error) { context.showToast(error.message, "error"); button.disabled = false; }
+    });
   };
   root.querySelector("[data-new]")?.addEventListener("click", () => openTaskModal());
   root.querySelector("select").addEventListener("change", update);

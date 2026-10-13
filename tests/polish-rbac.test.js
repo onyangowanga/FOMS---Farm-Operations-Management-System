@@ -10,7 +10,7 @@ test("worker API allowlist, assigned task isolation, safe selectors and sanitize
     const worker = await f.seed("WORKER", owner.organizationId);
     const coworker = await f.seed("WORKER", owner.organizationId);
     const agronomist = await f.seed("AGRONOMIST", owner.organizationId);
-    for (const resource of ["/team", "/organization", "/farms", "/blocks", "/crops", "/crops/types", "/livestock", "/inventory", "/sales", "/expenses", "/documents", "/admin/clients"]) {
+    for (const resource of ["/team", "/organization", "/farms", "/blocks", "/crops", "/crops/types", "/livestock", "/sales", "/expenses", "/documents", "/admin/clients"]) {
       assert.equal((await request(resource, "GET", undefined, worker.cookie)).status, 403, resource);
     }
     assert.equal((await request("/team", "GET", undefined, agronomist.cookie)).status, 403);

@@ -1,5 +1,5 @@
-import { api } from "./api.js?v=0.10.0";
-import { field, modal } from "./v03.js?v=0.10.0";
+import { api } from "./api.js?v=0.12.0";
+import { field, modal } from "./v03.js?v=0.12.0";
 
 let context;
 let filters = {};
@@ -16,7 +16,7 @@ const localTime = (value) => new Date(value.getTime() - value.getTimezoneOffset(
 export async function openInventoryModal(item = {}) {
   if (!manage()) { context.showToast("Only owners and managers can manage inventory.", "error"); return; }
   try {
-    const farms = await context.loadAll("/farms");
+    const farms = await context.loadAll("/farms").catch(() => []);
     const requestId = crypto.randomUUID();
     const form = modal(item.id ? "Edit inventory item" : "Add inventory item",
       field("name", "Item name", "text", item.name || "", { required: true, maxlength: 120 }) +
@@ -114,6 +114,7 @@ async function detail(id) {
     <section class="card min-w-0 break-words"><p class="text-lg font-semibold">${qty(item.quantity)} ${esc(item.unit)} ${item.lowStock ? '<span class="text-sm text-amber-700">Reorder needed</span>' : ""}</p>
       ${individual ? `<p class="mt-3 text-sm"><strong>Condition:</strong> ${esc(label(item.assetCondition))}</p><p class="mt-2 text-sm"><strong>Serial number:</strong> ${esc(item.serialNumber || "Not set")}</p><p class="mt-2 text-sm ${due ? "text-amber-700" : ""}"><strong>Next maintenance:</strong> ${esc(date(item.nextMaintenanceDate))}${due ? " (due)" : ""}</p>` : `<p class="mt-3 text-sm">Reorder level: ${qty(item.reorderLevel)} ${esc(item.unit)}</p>`}
       ${item.notes ? `<p class="mt-3 whitespace-pre-wrap text-sm">${esc(item.notes)}</p>` : ""}
+      ${!manage() && context.getUser().role === "WORKER" && !individual ? '<div class="mt-4 flex flex-wrap gap-2"><button data-stock="ADJUSTMENT" class="btn-primary">Count stock</button><button data-stock="OUT" class="btn-secondary">Record stock used</button></div>' : ""}
       ${manage() ? `<div class="mt-4 flex flex-wrap gap-2">${individual ? (item.assetCondition !== "RETIRED" ? '<button data-equipment class="btn-primary">Record maintenance / condition</button>' : '<p class="text-sm text-slate-500">Retired equipment - history retained.</p>') : '<button data-stock="IN" class="btn-primary">Receive stock</button><button data-stock="OUT" class="btn-secondary">Issue stock</button><button data-stock="ADJUSTMENT" class="btn-secondary">Reconcile count</button>'}</div>` : ""}
     </section>
     ${individual ? `<section class="card mt-5 min-w-0"><h2 class="text-lg font-semibold">Equipment history</h2><div class="mt-4 space-y-3">${events.data.map((event) => `<article class="min-w-0 rounded-xl border border-slate-100 p-3"><p class="break-words text-sm font-semibold">${esc(label(event.type))} - ${esc(label(event.condition))}</p><p class="mt-1 break-words text-xs text-slate-500">Observed ${esc(date(event.observedAt))} / recorded ${esc(date(event.createdAt))}</p><p class="mt-2 whitespace-pre-wrap break-words text-sm">${esc(event.notes)}</p>${event.cost !== null ? `<p class="mt-2 text-sm">Cost: KES ${Number(event.cost).toLocaleString()}</p>` : ""}<p class="mt-2 break-words text-xs text-slate-500">Next maintenance: ${esc(date(event.nextMaintenanceDate))}</p></article>`).join("") || '<p class="text-sm text-slate-500">No maintenance or condition records yet.</p>'}</div></section>` : ""}
@@ -130,7 +131,7 @@ async function detail(id) {
 }
 export async function renderInventory(id) {
   if (id) return detail(id);
-  const farms = await context.loadAll("/farms");
+  const farms = await context.loadAll("/farms").catch(() => []);
   const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
   const response = await api.get(`/inventory?${query}`);
   const root = document.querySelector("#content");

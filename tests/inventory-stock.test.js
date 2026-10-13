@@ -13,7 +13,7 @@ test("inventory: decimal stock, concurrent issues, replay, reconciliation, edit/
     const worker = await f.seed("WORKER", owner.organizationId);
     const stranger = await f.seed();
     assert.equal((await request("/inventory")).status, 401);
-    assert.equal((await request("/inventory", "GET", undefined, worker.cookie)).status, 403);
+    assert.equal((await request("/inventory", "GET", undefined, worker.cookie)).status, 200);
     const payload = { name: "Decimal maize", category: "SEED", unit: "kg", quantity: 0.3, reorderLevel: 0.1, requestId: crypto.randomUUID() };
     const created = await request("/inventory/items", "POST", payload, owner.cookie);
     assert.equal(created.status, 201, JSON.stringify(created.body));

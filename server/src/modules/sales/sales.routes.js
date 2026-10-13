@@ -129,7 +129,7 @@ router.post("/livestock-events/:eventId/invoice", async (req, res, next) => {
       if (event.saleInvoice) throw new AppError(409, "This livestock sale already has a linked invoice");
       await relatedBuyer(tx, req, payload);
       const farmId = event.livestock.farmId;
-      const product = `${event.livestock.species} - ${event.livestock.identifier || "Livestock"}${event.livestock.species === "POULTRY" ? " (birds)" : " (head)"}`;
+      const product = `${event.livestock.species} - ${event.livestock.identifier || "Livestock"}${["POULTRY", "DUCK", "TURKEY", "QUAIL", "GUINEA_FOWL"].includes(event.livestock.species) ? " (birds)" : " (head)"}`;
       const totals = amounts({ unitPrice: payload.unitPrice, quantity: event.quantity, soldAt: event.occurredAt, dueDate: payload.dueDate });
       const buyer = payload.buyerId ? null : await tx.buyer.create({
         data: { ...payload.buyer, farmId, organizationId: req.auth.organizationId, createdBy: req.auth.userId }

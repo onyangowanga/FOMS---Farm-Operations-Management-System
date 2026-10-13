@@ -19,6 +19,7 @@ enum TaskStatus {
   IN_PROGRESS
   COMPLETED
   APPROVED
+  VOID
 }
 
 enum Priority {
@@ -91,6 +92,17 @@ model Organization {
   audits      AuditLog[]
   cropTypes   CropType[]
   notifications Notification[]
+  dailyBoard  DailyBoard?
+}
+
+model DailyBoard {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @unique @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  headline       String?
+  items          Json         @default("[]")
+  updatedBy      String?      @db.Uuid
+  updatedAt      DateTime     @default(now()) @updatedAt
 }
 
 model User {
@@ -200,6 +212,9 @@ model Block {
   farmId         String       @db.Uuid
   name           String
   acreage        Float?
+  widthMeters    Float?
+  bedCount       Int?
+  driplineCount  Int?
   latitude       Float?
   longitude      Float?
   currentUse     String?

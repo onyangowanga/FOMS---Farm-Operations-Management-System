@@ -9,7 +9,7 @@ import { categories, itemFields, itemSchema, movementSchema, assetEventSchema } 
 
 const router = Router();
 const managers = ["OWNER", "MANAGER"];
-router.use(authorize(...managers, "AGRONOMIST"));
+router.use(authorize(...managers, "AGRONOMIST", "WORKER"));
 const scope = (req, id) => ({ organizationId: req.auth.organizationId, deletedAt: null, ...(id ? { id } : {}) });
 const include = { farm: { select: { id: true, name: true } }, _count: { select: { movements: true, assetEvents: true } } };
 const lowStock = (item) => item.trackingMode === "BATCH" && item.quantity.lte(item.reorderLevel);
@@ -138,10 +138,11 @@ router.get("/items/:id/movements", async (req, res, next) => {
     res.json({ success: true, data: data.map(publicMovement) });
   } catch (error) { next(error); }
 });
-router.post("/items/:id/movements", authorize(...managers), async (req, res, next) => {
+router.post("/items/:id/movements", authorize(...managers, "WORKER"), async (req, res, next) => {
   try {
     const id = z.uuid().parse(req.params.id);
     const payload = movementSchema.parse(req.body);
+    if (req.auth.role === "WORKER" && payload.type === "IN") throw new AppError(403, "Workers can record stock used or count stock, not add purchases");
     const result = await prisma.$transaction(async (tx) => {
       await lockOrganization(tx, req.auth.organizationId);
       const item = await findItem(tx, req, id);

@@ -19,7 +19,7 @@ export const taskStatusSchema = z.object({
 export const taskQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "APPROVED"]).optional(),
+  status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "APPROVED", "VOID"]).optional(),
   farmId: z.uuid().optional(),
   assignedTo: z.uuid().optional()
 });

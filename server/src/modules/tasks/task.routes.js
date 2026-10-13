@@ -14,6 +14,7 @@ router.use(authorize("OWNER", "MANAGER", "AGRONOMIST", "WORKER"));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 0 } });
 const include = { farm: { select: { id: true, name: true } }, assignee: { select: { id: true, name: true } } };
 const editable = (task) => {
+  if (task.status === "VOID") throw new AppError(409, "Voided tasks cannot be changed");
   if (["COMPLETED", "APPROVED"].includes(task.status)) throw new AppError(409, "Submitted or approved tasks are locked. Request rework before making changes.");
 };
 async function related(tx, req, payload) {
@@ -187,6 +188,22 @@ router.delete("/:id/evidence/:evidenceId", authorize("OWNER", "MANAGER", "WORKER
       await recordEvent(tx, req, task, "REMOVE_EVIDENCE", task.status, evidence.originalName);
     });
     res.json({ success: true, message: "Evidence removed from active submission; history retained" });
+  } catch (error) { next(error); }
+});
+router.post("/:id/void", authorize(...managers), async (req, res, next) => {
+  try {
+    const { reason } = z.object({ reason: z.string().trim().min(3).max(500) }).parse(req.body);
+    const data = await prisma.$transaction(async (tx) => {
+      await lockOrganization(tx, req.auth.organizationId);
+      const task = await findTask(tx, req);
+      if (task.status === "VOID") throw new AppError(409, "Task is already void");
+      if (task.status === "APPROVED") throw new AppError(409, "Approved tasks are final and cannot be voided");
+      const record = await tx.task.update({ where: { id: task.id }, data: { status: "VOID" }, include });
+      await recordEvent(tx, req, record, "VOID", task.status, reason);
+      if (task.assignedTo) await notifyTask(tx, req, task, "TASK_VOID", `Task cancelled: ${task.title} - ${reason}`, [task.assignedTo]);
+      return record;
+    });
+    res.json({ success: true, message: "Task voided", data });
   } catch (error) { next(error); }
 });
 router.delete("/:id", authorize(...managers), async (req, res, next) => {
